@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<!-- Declare standard HTML5 document type -->
+<html lang="en">
+<!-- Define the document head with metadata and basic styling -->
+<head>
+  <!-- Set character encoding to standard UTF-8 -->
+  <meta charset="UTF-8">
+  <!-- Ensure mobile responsive layout rendering -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Page title displayed in the browser tab -->
+  <title>On-Ground.ai - Twilio Calling Test</title>
+  <!-- Simple styles for clean presentation -->
+  <style>
+    /* Style the body with modern system font and light background */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    /* Style the main card container */
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 28px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    /* Style the brand logo and title */
+    h1 { font-size: 1.25rem; margin-top: 0; margin-bottom: 8px; color: #38bdf8; }
+    /* Style the subtitle */
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4; }
+    /* Style input group labels */
+    label { display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px; }
+    /* Style the text input field */
+    input { width: 100%; box-sizing: border-box; padding: 12px 14px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; font-size: 1rem; margin-bottom: 18px; outline: none; transition: border-color 0.2s; }
+    /* Focus state for input field */
+    input:focus { border-color: #38bdf8; }
+    /* Style the call action button */
+    button { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    /* Hover state for call button */
+    button:hover { background: #0369a1; }
+    /* Disabled state for call button */
+    button:disabled { background: #475569; cursor: not-allowed; }
+    /* Style the status feedback message box */
+    #status { margin-top: 18px; padding: 12px; border-radius: 8px; font-size: 0.85rem; display: none; line-height: 1.4; word-break: break-all; }
+    /* Success notification style */
+    .success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; }
+    /* Error notification style */
+    .error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }
+    /* Info badge style */
+    .badge { display: inline-block; background: #0369a1; color: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-bottom: 16px; }
+  </style>
+</head>
+<!-- Define page body with input and call trigger button -->
+<body>
+  <!-- Container card for the calling test -->
+  <div class="card">
+    <!-- Platform brand tag -->
+    <span class="badge">On-Ground.ai Calling Test</span>
+    <!-- Primary heading -->
+    <h1>Human-to-Human Twilio Bridge</h1>
+    <!-- Explanatory note about the flow -->
+    <p>Test outbound telephony with Twilio. You can either simulate a customer talking to your phone, or bridge your phone to another number.</p>
+    
+    <!-- Phone number input label -->
+    <label for="toPhone">Destination Phone Number:</label>
+    <!-- Phone number input field with placeholder -->
+    <input type="text" id="toPhone" placeholder="+91 9113027924" value="+919113027924" />
+    
+    <!-- Action buttons container -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <!-- Primary Simulation Call Button (Recommended for solo testing) -->
+      <button id="callSimBtn" onclick="initiateCall(true)" style="background: #10b981;">
+        📞 Call My Phone (Customer Dialogue)
+      </button>
+      
+      <!-- Bridge Call Button -->
+      <button id="callBtn" onclick="initiateCall(false)" style="background: #0284c7;">
+        👥 Bridge to Another Phone Number
+      </button>
+    </div>
+    
+    <!-- Status message display container -->
+    <div id="status"></div>
+  </div>
+
+  <!-- JavaScript to trigger POST /api/call -->
+  <script>
+    // Asynchronous function to invoke the backend call endpoint
+    async function initiateCall(simulate = false) {
+      // Get the phone number entered by the user
+      const to = document.getElementById('toPhone').value.trim();
+      // Reference to the status message element
+      const statusDiv = document.getElementById('status');
+      // Reference to the call action buttons
+      const callSimBtn = document.getElementById('callSimBtn');
+      const callBtn = document.getElementById('callBtn');
+      
+      // Validate that the user entered a phone number
+      if (!to) {
+        // Display validation error if the field is empty
+        statusDiv.className = 'error';
+        // Set error message text
+        statusDiv.innerText = 'Please enter a valid phone number with country code.';
+        // Make the error box visible
+        statusDiv.style.display = 'block';
+        // Exit function early
+        return;
+      }
+      
+      // Disable buttons while request is in-flight
+      callSimBtn.disabled = true;
+      callBtn.disabled = true;
+      // Change button text to show loading state
+      callSimBtn.innerText = 'Calling your phone now...';
+      // Hide any previous status messages
+      statusDiv.style.display = 'none';
+      
+      // Attempt the HTTP POST request to the calling backend
+      try {
+        // Send POST request to /api/call endpoint with target phone in JSON body
+        const response = await fetch('/api/call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: to, simulate: simulate })
+        });
+        
+        // Parse the JSON response received from the backend
+        const data = await response.json();
+        
+        // Check if the call was successfully dispatched by Twilio
+        if (data.success) {
+          // Apply success styling class
+          statusDiv.className = 'success';
+          // Render success message with call SID and instructions
+          statusDiv.innerHTML = `<strong>Call Dispatched!</strong><br>${data.message}<br><small>Call SID: ${data.callSid}</small><br><br><em>When you pick up, wait 2 seconds for audio to begin.</em>`;
+        } else {
+          // Apply error styling class
+          statusDiv.className = 'error';
+          // Render error description returned from backend
+          statusDiv.innerHTML = `<strong>Call Failed:</strong><br>${data.error || 'Unknown error'}`;
+        }
+      } catch (err) {
+        // Apply error styling class on network failure
+        statusDiv.className = 'error';
+        // Render network error message
+        statusDiv.innerHTML = `<strong>Network Error:</strong><br>${err.message}`;
+      } finally {
+        // Display the status message box
+        statusDiv.style.display = 'block';
+        // Re-enable the buttons
+        callSimBtn.disabled = false;
+        callBtn.disabled = false;
+        // Reset button texts
+        callSimBtn.innerText = '📞 Call My Phone (Customer Dialogue)';
+        callBtn.innerText = '👥 Bridge to Another Phone Number';
+      }
+    }
+  </script>
+</body>
+</html>

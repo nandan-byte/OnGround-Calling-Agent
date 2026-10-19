@@ -1,0 +1,99 @@
+/* Reset margin, padding, and box-sizing across all elements */
+* {
+  /* Set standard border-box sizing */
+  box-sizing: border-box;
+  /* Remove default margins */
+  margin: 0;
+  /* Remove default padding */
+  padding: 0;
+}
+
+/* Base styling for the root HTML and body */
+body {
+  /* Apply modern system font family */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Background color matching dark-green deep slate mock tone */
+  background-color: #0b1318;
+  /* Light text color for high contrast readability */
+  color: #e2e8f0;
+  /* Smooth font smoothing for macOS and iOS */
+  -webkit-font-smoothing: antialiased;
+  /* Firefox font smoothing */
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal overflow */
+  overflow-x: hidden;
+  /* Restrained font size for high information density */
+  font-size: 13px;
+  /* Default line height */
+  line-height: 1.45;
+}
+
+/* Custom scrollbar styling for slick enterprise look */
+::-webkit-scrollbar {
+  /* Scrollbar width */
+  width: 6px;
+  /* Scrollbar height */
+  height: 6px;
+}
+
+/* Scrollbar track */
+::-webkit-scrollbar-track {
+  /* Dark track matching background */
+  background: #0d181e;
+}
+
+/* Scrollbar thumb */
+::-webkit-scrollbar-thumb {
+  /* Subtle slate thumb */
+  background: #1e313b;
+  /* Rounded edges */
+  border-radius: 3px;
+}
+
+/* Hover state for scrollbar thumb */
+::-webkit-scrollbar-thumb:hover {
+  /* Lighter thumb on hover */
+  background: #2b4553;
+}
+
+/* Utility button reset */
+button {
+  /* Inherit font family */
+  font-family: inherit;
+  /* Pointer cursor for interactivity */
+  cursor: pointer;
+  /* Remove border outline */
+  border: none;
+  /* Transparent background by default */
+  background: none;
+  /* Inherit color */
+  color: inherit;
+}
+
+/* Utility input reset */
+input, textarea, select {
+  /* Inherit font */
+  font-family: inherit;
+  /* Inherit font size */
+  font-size: inherit;
+  /* Remove focus outline ring */
+  outline: none;
+}
+
+/* Pulsing dot animation for live status indicators */
+@keyframes pulseGlow {
+  /* Initial scale and opacity */
+  0% { transform: scale(0.95); opacity: 0.8; }
+  /* Peak scale and opacity */
+  50% { transform: scale(1.2); opacity: 1; }
+  /* Reset to base scale */
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* Sound wave animation for active in-app call */
+@keyframes soundWave {
+  /* Base height */
+  0%, 100% { height: 6px; }
+  /* Stretched height */
+  50% { height: 24px; }
+}
