@@ -218,14 +218,16 @@ export default function CallModal({ callState, onHangup }) {
   const transcriptRef = useRef(null);
   const liveTranscriptRef = useRef('');
   const isRecordingRef = useRef(false);
-  const holdStartTimeRef = useRef(0);
+  const isHoldingRef = useRef(false);
+  const holdTimeoutRef = useRef(null);
 
-  // Quick pitch responses for the agent
+  // Quick pitch responses for the agent dynamically personalized to contact name
+  const customerName = callState.contactName || 'Mukunda';
   const quickPitches = [
-    "Hello Mukunda! This is Arvind calling from The Sleep Company Indiranagar store.",
-    "Yes Mukunda, the SmartGRID Ortho King Size mattress and pillows are in stock today.",
-    "We have our 6-month zero-cost EMI on Bajaj Finserv available today with our 10-year warranty.",
-    "I'll send the official quotation and discount link directly to your WhatsApp right away."
+    `Hello ${customerName}! This is Arvind calling from The Sleep Company Indiranagar store.`,
+    `Yes ${customerName}, the SmartGRID Ortho King Size mattress and pillows are in stock today.`,
+    `We have our 6-month zero-cost EMI on Bajaj Finserv available today with our 10-year warranty.`,
+    `I'll send the official quotation and 25% discount link directly to your WhatsApp right away.`
   ];
 
   // Auto-scroll transcript container
@@ -245,11 +247,11 @@ export default function CallModal({ callState, onHangup }) {
 
   // Initial Customer Greeting on mount
   useEffect(() => {
-    const customerName = callState.contactName || 'Mukunda';
-    const customerGreeting = `Hello? This is ${customerName} speaking. Who is this?`;
+    const custName = callState.contactName || 'Mukunda';
+    const customerGreeting = `Hello? This is ${custName} speaking. Who is this?`;
 
     setConversationHistory([
-      { speaker: customerName, text: customerGreeting, isCustomer: true, timestamp: new Date() }
+      { speaker: custName, text: customerGreeting, isCustomer: true, timestamp: new Date() }
     ]);
     setCurrentHint('Introduce yourself as Arvind from The Sleep Company');
 
@@ -271,8 +273,8 @@ export default function CallModal({ callState, onHangup }) {
     };
   }, [callState.contactName]);
 
-  // Start Voice Recording (Dual support: works for Click-to-Speak and Hold-to-Talk)
-  const startRecording = useCallback(() => {
+  // Start Voice Recording (Supports seamless single click toggle and hold-to-talk)
+  const startRecording = useCallback(async () => {
     if (turn !== TURN.AGENT_TURN && turn !== TURN.AGENT_RECORDING) return;
     if (isRecordingRef.current) return;
 
@@ -286,6 +288,17 @@ export default function CallModal({ callState, onHangup }) {
       return;
     }
 
+    // Proactively verify browser mic permission via getUserMedia
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        console.warn('Microphone permission request error:', err);
+        setMicError('Microphone blocked. Please click the camera/mic icon in your browser address bar to allow microphone access, or use Quick Pitches below.');
+        return;
+      }
+    }
+
     setMicError(null);
     liveTranscriptRef.current = '';
     setUserTranscript('');
@@ -293,7 +306,6 @@ export default function CallModal({ callState, onHangup }) {
     setTurn(TURN.AGENT_RECORDING);
 
     try {
-      // Create a fresh SpeechRecognition instance on every recording session to avoid Chromium bugs
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -314,14 +326,16 @@ export default function CallModal({ callState, onHangup }) {
           setMicError('Microphone permission blocked. Please allow mic in browser settings, or click any Quick Pitch below.');
           isRecordingRef.current = false;
           setTurn(TURN.AGENT_TURN);
+        } else if (e.error === 'audio-capture') {
+          setMicError('No microphone detected. Please connect a mic or use Quick Pitches below.');
+          isRecordingRef.current = false;
+          setTurn(TURN.AGENT_TURN);
         }
       };
 
       recognition.onend = () => {
-        // Recognition ended by engine
         if (isRecordingRef.current && turn === TURN.AGENT_RECORDING) {
-          // If text was captured, automatically send it
-          const text = liveTranscriptRef.current.trim();
+          const text = (liveTranscriptRef.current || '').trim();
           if (text.length > 1) {
             isRecordingRef.current = false;
             handleAgentSpeech(text);
@@ -340,45 +354,59 @@ export default function CallModal({ callState, onHangup }) {
 
   // Stop Recording and Dispatch Speech
   const stopRecordingAndSend = useCallback(() => {
-    if (!isRecordingRef.current && turn !== TURN.AGENT_RECORDING) return;
-
     isRecordingRef.current = false;
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
     }
 
-    // Brief 250ms window to catch final speech recognition slice
     setTimeout(() => {
       const textToSend = (liveTranscriptRef.current || userTranscript || '').trim();
       if (textToSend.length > 1) {
         handleAgentSpeech(textToSend);
       } else {
         setTurn(TURN.AGENT_TURN);
+        setMicError('No speech detected. Please speak clearly into your mic or click a Quick Pitch below.');
       }
-    }, 250);
+    }, 200);
   }, [turn, userTranscript]);
 
-  // Unified Toggle / Click to Speak handler
-  const handleMicButtonClick = () => {
+  // Unified Toggle / Click to Speak handler with hold-to-talk isolation
+  const handleMouseDown = () => {
+    isHoldingRef.current = false;
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    // If user holds down for more than 280ms, activate hold-to-talk mode
+    holdTimeoutRef.current = setTimeout(() => {
+      isHoldingRef.current = true;
+      if (!isRecordingRef.current) {
+        startRecording();
+      }
+    }, 280);
+  };
+
+  const handleMouseUp = () => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+    if (isHoldingRef.current) {
+      stopRecordingAndSend();
+    }
+  };
+
+  const handleButtonClick = () => {
+    // If the click is the end of a hold gesture, do not toggle
+    if (isHoldingRef.current) {
+      isHoldingRef.current = false;
+      return;
+    }
+
     if (turn !== TURN.AGENT_TURN && turn !== TURN.AGENT_RECORDING) return;
+
+    // Normal Click: Clean toggle
     if (isRecordingRef.current || turn === TURN.AGENT_RECORDING) {
       stopRecordingAndSend();
     } else {
       startRecording();
-    }
-  };
-
-  // Hold-to-Talk Mouse / Touch Down
-  const handleHoldStart = () => {
-    holdStartTimeRef.current = Date.now();
-    startRecording();
-  };
-
-  // Hold-to-Talk Mouse / Touch Up (Sends if held > 350ms, otherwise keeps recording active for toggle)
-  const handleHoldEnd = () => {
-    const heldDuration = Date.now() - holdStartTimeRef.current;
-    if (heldDuration > 350) {
-      stopRecordingAndSend();
     }
   };
 
@@ -667,11 +695,11 @@ export default function CallModal({ callState, onHangup }) {
         {/* Main Microphone Button: Dual Click-to-Speak + Hold-to-Talk */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <button
-            onClick={handleMicButtonClick}
-            onMouseDown={handleHoldStart}
-            onMouseUp={handleHoldEnd}
-            onTouchStart={handleHoldStart}
-            onTouchEnd={handleHoldEnd}
+            onClick={handleButtonClick}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onTouchStart={handleMouseDown}
+            onTouchEnd={handleMouseUp}
             disabled={!isAgentTurn && !isRecording}
             style={{
               flex: 1,
@@ -695,7 +723,7 @@ export default function CallModal({ callState, onHangup }) {
             {isRecording ? (
               <>
                 <Mic size={18} />
-                <span>🔴 Click to Send Speech (or release hold)</span>
+                <span>🔴 Recording... Click when Done to Send</span>
               </>
             ) : isAgentTurn ? (
               <>
@@ -719,17 +747,18 @@ export default function CallModal({ callState, onHangup }) {
                 color: '#022c22',
                 border: 'none',
                 borderRadius: '10px',
-                padding: '0 16px',
+                padding: '0 18px',
                 fontSize: '12px',
                 fontWeight: 700,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '6px',
+                boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
               }}
             >
               <Send size={14} />
-              <span>Send</span>
+              <span>Send Now</span>
             </button>
           )}
         </div>
