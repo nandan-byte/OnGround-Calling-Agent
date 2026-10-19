@@ -1,5 +1,5 @@
 // Import standard React hooks
-import React from 'react';
+import React, { useState } from 'react';
 // Import icons from lucide-react library
 import { Bell, Award, User, Menu, PhoneCall, ShieldCheck } from 'lucide-react';
 // Import agent profile data
@@ -7,6 +7,8 @@ import { agentProfile } from '../mockData';
 
 // TopBar component rendering the header navigation and agent status
 export default function TopBar({ onOpenMobileMenu, onTriggerCall }) {
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(true);
   return (
     // Top bar header wrapper with dark green border
     <header style={{
@@ -104,19 +106,114 @@ export default function TopBar({ onOpenMobileMenu, onTriggerCall }) {
           <span>QA {agentProfile.qaScore}</span>
         </div>
 
-        {/* Notification Bell Icon */}
-        <div style={{ position: 'relative', cursor: 'pointer', padding: '6px' }}>
-          <Bell size={17} color="#94a3b8" />
-          {/* Unread notification count indicator */}
-          <span style={{
-            position: 'absolute',
-            top: '4px',
-            right: '4px',
-            width: '7px',
-            height: '7px',
-            borderRadius: '50%',
-            backgroundColor: '#ef4444'
-          }}></span>
+        {/* Notification Bell Icon & Interactive Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <div
+            onClick={() => setIsNotifOpen(prev => !prev)}
+            style={{
+              position: 'relative',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '6px',
+              backgroundColor: isNotifOpen ? '#14382e' : 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Notifications"
+          >
+            <Bell size={17} color={isNotifOpen ? '#34d399' : '#94a3b8'} />
+            {/* Unread notification count indicator */}
+            {hasUnread && (
+              <span style={{
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                backgroundColor: '#ef4444',
+                boxShadow: '0 0 6px #ef4444'
+              }}></span>
+            )}
+          </div>
+
+          {/* Interactive Notifications Floating Menu */}
+          {isNotifOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '42px',
+              right: 0,
+              width: '320px',
+              backgroundColor: '#0f1c18',
+              border: '1px solid #19332c',
+              borderRadius: '10px',
+              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.7)',
+              zIndex: 100,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                padding: '12px 14px',
+                borderBottom: '1px solid #142a24',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#0a1714'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Bell size={14} color="#34d399" />
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>Store Notifications</span>
+                </div>
+                {hasUnread && (
+                  <button
+                    onClick={() => setHasUnread(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#34d399',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Mark as read
+                  </button>
+                )}
+              </div>
+
+              <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid #142a24', backgroundColor: hasUnread ? '#0b1f19' : 'transparent' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '2px' }}>
+                    <span style={{ fontWeight: 700, color: '#f59e0b' }}>🔥 Hot Walkout Alert</span>
+                    <span style={{ color: '#64748b' }}>12m ago</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 500 }}>
+                    Mukunda left Indiranagar store without purchase. High intent for Ortho GRID King size.
+                  </div>
+                </div>
+
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid #142a24' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '2px' }}>
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>📞 Scheduled Callback</span>
+                    <span style={{ color: '#64748b' }}>45m ago</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                    Divya P. requested follow-up at 2:30 PM with Bajaj Finserv 6-month EMI quote.
+                  </div>
+                </div>
+
+                <div style={{ padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '2px' }}>
+                    <span style={{ fontWeight: 700, color: '#34d399' }}>🤖 AvaniBot Update</span>
+                    <span style={{ color: '#64748b' }}>2h ago</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                    Indiranagar store mattress stock refreshed. 14 SmartGRID Luxe King units ready to ship.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Vertical divider */}

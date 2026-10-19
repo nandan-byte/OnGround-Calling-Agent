@@ -1,0 +1,373 @@
+================================================================================
+ON-GROUND.AI · CALL CENTRE PORTAL & REAL-TIME CALLING ENGINE
+COMPLETE TECHNICAL & BUSINESS MASTER GUIDE FOR INTERVIEWS AND SYSTEM AUDIT
+================================================================================
+Client: The Sleep Company (SmartGrid Mattresses & Sleep Tech)
+Platform: On-Ground.ai (AI Sales Copilot & Retail Walkout Recovery)
+Author / Candidate: Arvind Rajan
+Target Store Locations: Indiranagar, Koramangala, HSR Layout (Bangalore)
+Technology Stack: React 18.3, Vite 5.4, Node.js 18+, Express 4.19, Twilio Voice API, Web Speech API
+Deployment Targets: Vercel (Frontend SPA) + Render.com (Backend Web Service)
+================================================================================
+
+TABLE OF CONTENTS:
+1. Executive Business Overview & Retail Economics
+2. End-to-End System Architecture & Data Flow
+3. Frontend Deep Dive (Components, State, Reactivity, & Design System)
+4. In-App Calling Engine (Web Speech API, SpeechRecognition, Negation Parsing)
+5. Telephony Engine (Twilio PSTN, TwiML, Polling, & Auto-Dismissal)
+6. Backend & Cloud Infrastructure (Express, CORS, Webhooks, Render)
+7. Technical Interview Defense (System Design, Edge Cases, & Deep Answers)
+8. Production Deployment & Cloud Configuration
+
+================================================================================
+1. EXECUTIVE BUSINESS OVERVIEW & RETAIL ECONOMICS
+================================================================================
+
+1.1 THE CLIENT & PRODUCT CONTEXT:
+The Sleep Company is an omnichannel direct-to-consumer (D2C) brand known for patented SmartGrid mattresses, ergonomic chairs, and smart recliners (Elev8). Their average basket size ranges from ₹30,000 to ₹75,000+. 
+
+1.2 THE BUSINESS PROBLEM (THE RETAIL "WALKOUT LEAK"):
+- In offline retail stores (like Indiranagar and HSR in Bangalore), high-intent shoppers spend 20 to 40 minutes testing mattresses, asking about EMI, and comparing firmness.
+- Bain (2024) retail studies show that 86% of retail walkouts leave with zero structured follow-up. Store staff are busy attending new walk-ins and fail to capture customer details or follow up before the lead goes cold.
+- When an undecided customer leaves the store, they frequently end up buying from a competitor (Wakefit, Duroflex, Sleepwell) within 24 to 48 hours.
+- A single walkout represents ₹30,000 to ₹75,000 in lost gross merchandise value (GMV).
+
+1.3 SPEED-TO-LEAD & CONVERSION METRICS:
+- On-Ground.ai's benchmark data demonstrates a +23.6 percentage point increase in conversion when an agent calls the shopper within 30 to 60 minutes of leaving the store and specifically names the customer, store, and mattress model.
+- Store revenue experiences a measured +2% overall lift when walkout recovery is automated.
+
+1.4 THE DUAL CALLING PHILOSOPHY IN THIS PORTAL:
+Why does the portal have two distinct calling modes?
+1) IN-APP BROWSER CALL ("The AI Pitch Coach"):
+   - Target User: The Call Centre Executive / Human Employee (Arvind Rajan).
+   - Purpose: Zero-cost sales pitch training and objection handling. New agents can practice handling tough customer objections (e.g., price resistance, EMI inquiries, warranty doubts) against an intelligent AI customer before dialing high-value real leads.
+   - Value: Ensures agents never burn a ₹50,000 prospect due to poor pitch execution.
+
+2) PHYSICAL PHONE CALL ("The Outbound Recovery Engine"):
+   - Target User: The Real Walkout Customer (e.g., Mukunda).
+   - Purpose: Automated carrier telephony (PSTN) that dials the shopper's mobile phone to deliver immediate walkout recovery offers (25% weekend voucher, zero-cost EMI terms, WhatsApp quotation link).
+   - Value: Scalability. 100 walkouts across 10 stores can be engaged in minutes without requiring 10 additional telecallers.
+
+================================================================================
+2. END-TO-END SYSTEM ARCHITECTURE & DATA FLOW
+================================================================================
+
+2.1 HIGH-LEVEL ARCHITECTURE TOPOLOGY:
+
+  [ Browser Client (React 18 + Vite) ]
+          │
+          ├──> Native Web Speech API (Local STT & TTS in Browser)
+          │    └── Runs 100% client-side: Zero cloud latency, zero API costs.
+          │
+          ├──> REST API Calls (/api/call, /api/call-status, /api/call/hangup)
+          │    └── Proxied locally via Vite (Port 3000 -> 5000)
+          │    └── Routed in production via VITE_API_URL to Render.com
+          │
+  [ Calling Backend Server (Node.js Express - Port 5000) ]
+          │
+          ├──> Twilio Cloud REST API (twilioClient.calls.create)
+          │    └── Places outbound PSTN calls to mobile carriers (+91 numbers)
+          │
+          ├──> Dynamic TwiML Engine (Pause, Say, Gather speech)
+          │    └── Synthesizes localized Indian-English audio (voice: alice)
+          │
+          └──> Call Polling & Remote Hangup Service
+               └── Syncs call state (ringing -> in-progress -> completed)
+
+2.2 SYSTEM DATA FLOW LIFECYCLE:
+1. Signal Capture: Walkout event captured from Indiranagar POS tablet. Lead created with ICP Fit (87%) and Intent Score (92%).
+2. Prioritization: Plan engine ranks leads on the agent's dashboard by deal value and urgency.
+3. Warm-up (Optional): Agent launches "Practise a call" in browser to warm up and test pitch scoring against AI objections.
+4. Call Execution: Agent clicks "Phone Call" or "Call back". Express triggers Twilio outbound API.
+5. Telephony Execution: Customer mobile rings. Twilio delivers tailored offer and listens for speech input.
+6. Dashboard Mutation: The matching task on the dashboard immediately updates to "✅ Completed", strikes through title, bumps shift targets ("18 / 25" -> "20 / 25"), and increments closed lead counters.
+7. Auto-Dismissal: Once the customer hangs up mobile phone, Twilio webhook/polling detects "completed" and automatically closes the web modal within 1.5 seconds.
+
+================================================================================
+3. FRONTEND ARCHITECTURE DEEP DIVE
+================================================================================
+
+3.1 TECH STACK & DESIGN SYSTEM:
+- Framework: React 18.3.1 (Functional components, custom hooks, zero class components).
+- Build Tool: Vite 5.4 (Hot Module Replacement under 50ms, optimized rollup production bundle).
+- Icons: Lucide React (featherweight SVG icons, zero bloated icon fonts).
+- Color Palette: Retail dark-theme enterprise palette:
+  - Deep Obsidian Base: #0a1714 / #0f1c18
+  - Forest Border Accents: #19332c / #142a24
+  - Emerald Action Accents: #10b981 / #34d399 (Positive trends, call buttons)
+  - Amber Alert Accents: #f59e0b / #d97706 (High intent, urgent tasks)
+  - Crimson Badges: #ef4444 (Overdue items, missed call values)
+  - Slate Typography: #f8fafc (Primary text), #94a3b8 (Subtitles)
+
+3.2 COMPONENT BREAKDOWN & RESPONSIBILITIES:
+
+A) `frontend/src/App.jsx` (Central State Store & Dispatcher):
+   - Acts as the Single Source of Truth for the entire application.
+   - Manages global state: `currentTab`, `planSubTab`, `activeLeadId`, `activeCall`, `tasks`, `waitingQueue`, `callsPlacedCount`, `leadsClosedToday`.
+   - Houses the central mutation handler `markLeadAndTaskCompleted(contactName, leadId)`:
+     - Automatically updates tasks matching the caller's name to `{ completed: true, completedAt: 'Called just now', priority: 'Completed' }`.
+     - Automatically bumps shift target calls (`callsPlacedCount` increments).
+     - Resolves the "Who's Waiting" queue entry (`called: true`, `waitTime: 'Resolved just now'`).
+     - Updates lead status in `mockLeads` to `Contacted`.
+   - Manages conditional rendering for the two distinct modal overlays:
+     - If `activeCall.mode === 'in-app'`: Mounts `CallModal.jsx`.
+     - If `activeCall.mode === 'phone'`: Mounts `PhoneCallModal.jsx`.
+
+B) `frontend/src/components/TopBar.jsx`:
+   - Persistent header matching the official mock layout.
+   - Displays brand badge (`On-Ground.ai`), notification bell with blinking amber pulse dot.
+   - Renders the official OG Score™ pill: Ring metric `76` (green SVG ring) and global store rank `#3` in Koramangala.
+   - Displays agent status (`On Queue` with live green beacon) and user profile dropdown (`Arvind Rajan · The Sleep Company`).
+
+C) `frontend/src/components/Sidebar.jsx`:
+   - Left navigation rail with active state indicators.
+   - Expandable "Plan" menu supporting 4 sub-routes:
+     1. `Calls to make` (Outbound priority queue)
+     2. `Incoming` (Missed calls ledger)
+     3. `Recent` (Call history)
+     4. `Practise a call` (Direct launchpad for AI pitch coach)
+   - Calendar tab & Pulse team workspace tab.
+
+D) `frontend/src/components/Dashboard.jsx`:
+   - 4 Top-line KPI Cards:
+     1. OG Score™: `76` (▲13 trend)
+     2. Avg Handle Time: `4m 12s` (▼8% improvement)
+     3. CSAT Today: `94%` (▲2pt positive)
+     4. In Queue: `2` (live pulsing indicator)
+   - Earnings Progress Card:
+     - Shows current monthly commission: `₹5,200` (`₹1,700` from coached moves).
+     - Target slab: `₹800 to ₹6,000` with 87% progress bar.
+   - Reactive "My Tasks" Section:
+     - Interactive task cards with custom checkbox toggles.
+     - Direct "Call" trigger buttons right on each task row.
+     - Live task count badge (`3` updates to `2`, `1`, `0` dynamically).
+   - "Who's Waiting" Queue:
+     - Real-time customer cards: Mukunda R. (4m wait, Intent 94) & Ritu S. (12m wait, Intent 88).
+     - Clicking "Call" immediately connects to that customer and clears them from the queue.
+   - 7-Day Dual Bar Charts:
+     - Chart 1: Calls handled (Mon: 18, Tue: 22, Wed: 15, Thu: 26, Fri: 20, Sat: 12, Today: 14).
+     - Chart 2: CSAT trend (Mon: 88%, Tue: 90%, Wed: 85%, Thu: 92%, Fri: 89%, Sat: 91%, Today: 94%).
+
+E) `frontend/src/components/Plan.jsx`:
+   - Three tabbed operational views:
+     1. `Calls to make`: Ranked leads with ICP Fit scores, product interest (SmartGRID Luxe King), store visit timeline, and expandable detail drawer.
+     2. `Incoming`: Shows missed walkout calls with cumulative value at stake (`₹81,860`), individual callback buttons, and customer intent scores.
+     3. `Recent`: Chronological call ledger showing duration, timestamps, and customer sentiment. Clicking any row opens the Call Review Drawer with transcript and AI summaries.
+
+F) `frontend/src/components/CalendarView.jsx`:
+   - Complete October 2026 calendar month grid.
+   - Interactive event dots showing scheduled callbacks, team coaching sessions, and walkout follow-ups.
+   - "Today" button switcher and right-side day agenda drawer.
+
+G) `frontend/src/components/Pulse.jsx`:
+   - AvaniBot 2.0 Hero banner with daily briefing and objection coaching shortcuts.
+   - 5 Role Agents (#walkout-recovery, #pitch-coach, #asm-agent) & 4 Task Agents with live progress rings.
+   - Team Channel `#callcentre-team`:
+     - Pinned "Needs your input" card: Prompts agent to confirm the 4:30 PM callback with Mukunda. Features interactive `[✓ Confirmed]` and `[Reschedule]` buttons and inline reply box.
+     - Full interactive chat stream: Agent can type real messages, which append dynamically to the chat history with current timestamp.
+     - Kudos button with live heart counter (`Give Kudos (14)` -> `(15)`).
+
+H) `frontend/src/components/LeadsModal.jsx`:
+   - Detailed dossier modal opened by clicking any lead on the dashboard or plan.
+   - Pagination support ("Lead 1 of 5" with Previous/Next controls).
+   - Visual score meters for ICP Fit (87%) and Intent Score (92%).
+   - Collapsible accordion sections: *Fit Breakdown*, *How We Got Here (Visit Timeline)*, *Buying Signals*.
+   - Dual action buttons: `In-App Call` and `Phone Call`.
+
+================================================================================
+4. IN-APP CALLING ENGINE (BROWSER AI PITCH COACH)
+================================================================================
+
+File: `frontend/src/components/CallModal.jsx`
+
+4.1 HOW IT WORKS:
+The In-App Call is an interactive voice roleplay environment where the human agent sits at the computer, speaks into their microphone, and an AI plays the role of a skeptical retail customer (Mukunda) to test the agent's sales skills.
+
+4.2 UNDER THE HOOD: SPEECH RECOGNITION & SYNTHESIS:
+- Speech Recognition (STT): Uses browser-native `window.SpeechRecognition || window.webkitSpeechRecognition`.
+- Speech Synthesis (TTS): Uses `window.speechSynthesis` and `SpeechSynthesisUtterance` with an Indian-English accent profile (`en-IN`).
+
+4.3 CRITICAL ENGINEERING BUG FIX (Chromium `InvalidStateError`):
+- Technical Bug: In Google Chrome, calling `.start()` on an existing `SpeechRecognition` instance that previously stopped or errored throws an uncatchable `DOMException: Failed to execute 'start' on 'SpeechRecognition': recognition has already started`.
+- Solution Implemented: On every recording activation, the component creates a **brand-new `SpeechRecognition` instance**, registers fresh `.onresult`, `.onerror`, and `.onend` event handlers, and dispatches it cleanly. This ensures the microphone never locks up or goes silent during a session.
+
+4.4 DUAL VOICE INPUT MODES:
+1) Click-to-Speak Toggle: Click once to turn the microphone on (button pulses red with a live speech bubble showing real-time transcription). Click again when finished speaking to submit.
+2) Hold-to-Talk (Walkie-Talkie): Press and hold down the spacebar or mouse button to talk; release to submit immediately. Perfect for noisy call center floors.
+
+4.5 INTELLIGENT NEGATION & CONVERSATIONAL EVALUATOR:
+Naive keyword matching fails in sales evaluation. For example, if the agent says *"I will not send the quotation"*, a basic keyword trigger for `"send"` would falsely praise the agent.
+Our engine uses an advanced **Negation-Aware Parser**:
+- Regex Negation Detection: `/\b(not|won't|cannot|no|never|refuse|disagree)\b/i`.
+- If an agent says *"Yeah sure I will not send"* or *"I won't give discount"*:
+  1. The engine detects the negation qualifier immediately.
+  2. The customer responds with realistic pushback: *"Wait, why won't you send the quotation? How can I review the price without seeing it?"*
+  3. The agent's Objection Handling score drops by -10% with an amber warning badge.
+- Off-Topic / Gibberish Detection: If the agent says something unrelated (e.g., *"I am iron"* or random noise):
+  1. Customer responds with confusion: *"Sorry, I didn't quite catch that. How does that relate to the SmartGrid mattress I tested in Indiranagar?"*
+  2. The conversation does not falsely advance, and the score remains uncredited.
+- Stock & EMI Objection Handling:
+  - If agent explains 6-month zero-cost EMI on Bajaj Finserv: Score jumps by +15%.
+  - If agent confirms stock at Indiranagar: Score jumps by +10%.
+  - Once the pitch achieves valid qualification, the AI agrees: *"Okay great, please send the official quote and payment link to my WhatsApp."*
+
+================================================================================
+5. TELEPHONY ENGINE (TWILIO PSTN INTEGRATION)
+================================================================================
+
+Files: `frontend/src/components/PhoneCallModal.jsx` & `calling-backend/server.js`
+
+5.1 HOW THE PHONE CALL WORKS:
+When an agent clicks "Phone call", the portal triggers an outbound telephony sequence via Twilio Voice API to reach real mobile phone numbers over the cellular carrier network (PSTN).
+
+5.2 AGENT-FIRST DIALING ARCHITECTURE:
+In enterprise telephony, customers are never dialed first to wait on dead air. The system employs an Agent-First dispatch:
+1. Frontend sends `POST /api/call` with payload: `{ to: "+919876543210", customerName: "Mukunda", product: "SmartGRID Ortho King", store: "Indiranagar" }`.
+2. Backend calls `twilioClient.calls.create` specifying dynamic TwiML instructions.
+3. Twilio dials the configured phone number and executes the call lifecycle.
+
+5.3 TWIML GENERATION LIFECYCLE:
+```javascript
+const twimlResponse = new twilio.twiml.VoiceResponse();
+// 1. Audio Bearer Warmup: 2-second pause ensures carrier audio is open after pickup
+twimlResponse.pause({ length: 2 });
+
+// 2. Localized Audio Greeting
+twimlResponse.say(
+  { voice: 'alice', language: 'en-IN' },
+  `Hello ${name}! This is Sarah calling from The Sleep Company ${loc} regarding your inquiry for the ${prod}. How can I help you today?`
+);
+
+// 3. Speech Recognition Listener on Customer Phone
+const gather = twimlResponse.gather({
+  input: 'speech',
+  action: actionUrl,
+  language: 'en-IN',
+  speechTimeout: 'auto',
+  timeout: 4
+});
+gather.say({ voice: 'alice', language: 'en-IN' }, 'Go ahead, I am listening.');
+
+// 4. Default Offer Fallback
+twimlResponse.say(
+  { voice: 'alice', language: 'en-IN' },
+  `I am happy to let you know that the ${prod} is in stock, and our 6-month zero-cost EMI on Bajaj Finserv is available today. We will send the quotation link directly to your WhatsApp.`
+);
+```
+
+5.4 REAL-TIME STATUS POLLING & AUTO-DISMISSAL:
+- Once dialed, the backend returns the Twilio `callSid` (e.g., `CA3f7b...`).
+- `PhoneCallModal.jsx` mounts and polls `GET /api/call-status/:callSid` every 1,500ms.
+- As the call moves through Twilio statuses (`queued` -> `ringing` -> `in-progress` -> `completed`):
+  - When in-progress: UI shows live connected status and ticks duration timer (`00:15`, `00:16`).
+  - When customer hangs up mobile phone: Twilio reports status `completed`.
+  - Polling interval catches `completed`, captures final billable duration, displays "Call ended (completed)", and **automatically closes the modal after 1.5 seconds**.
+- Remote Hangup: Clicking "End Phone Call" sends `POST /api/call/hangup`, which calls `twilioClient.calls(callSid).update({ status: 'completed' })` to immediately terminate the carrier connection.
+
+================================================================================
+6. BACKEND & CLOUD INFRASTRUCTURE
+================================================================================
+
+File: `calling-backend/server.js`
+
+6.1 ENVIRONMENT CONFIGURATION:
+- Safe multi-environment dotenv loader:
+  ```javascript
+  require('dotenv').config();
+  require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+  ```
+  This guarantees that environment variables are loaded regardless of whether the app is started from the repository root, the subfolder, or cloud hosting (Render).
+
+6.2 REST API ENDPOINTS:
+- `GET /api/health`: Health check endpoint verifying Twilio configuration without exposing secret tokens.
+- `POST /api/call`: Initiates outbound Twilio voice call. Normalizes phone numbers with regex formatting.
+- `GET /api/call-status/:callSid`: Fetches live status, duration, and metadata for an active call.
+- `POST /api/call/hangup`: Remotely terminates an active Twilio call.
+- `POST /api/twilio/voice-reply`: Twilio webhook that evaluates caller speech and dynamically replies back with contextual TwiML.
+
+6.3 CLOUD WEBHOOK RESOLUTION:
+```javascript
+const baseUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
+const actionUrl = baseUrl ? `${baseUrl}/api/twilio/voice-reply` : '/api/twilio/voice-reply';
+```
+When deployed on Render.com, `process.env.RENDER_EXTERNAL_URL` is automatically populated by Render with the live HTTPS domain (e.g., `https://onground-backend.onrender.com`). This allows Twilio to immediately reach the webhook without requiring any manual ngrok tunnels.
+
+================================================================================
+7. TECHNICAL INTERVIEW DEFENSE & CORE QUESTIONS
+================================================================================
+
+Q1: Why did you choose React + Vite instead of Next.js or Create React App?
+Answer:
+- The brief asked to build the internal Call Centre portal that an agent keeps open on their laptop throughout an 8-hour shift. This is an authenticated, internal Single Page Application (SPA), not a public e-commerce store requiring Server-Side Rendering (SSR) for search engine indexing.
+- Vite 5 provides near-instant Hot Module Replacement (HMR) powered by native ES modules in development, and generates an optimized production Rollup bundle built in ~3.6 seconds.
+- Create React App (CRA) is deprecated and unmaintained, while Next.js introduces unnecessary SSR overhead and serverless cold starts for an operational agent dashboard.
+
+Q2: How did you implement voice calling in the browser, and what technical hurdles did you overcome?
+Answer:
+- In the browser, I implemented an AI Pitch Coach using the native Web Speech API (`SpeechRecognition` for audio transcription and `SpeechSynthesis` for customer voice playback).
+- The biggest technical challenge was Google Chrome's `InvalidStateError`: in Chromium browsers, calling `.start()` on a stopped SpeechRecognition instance crashes silently or throws an exception.
+- I architected the speech hook to discard and instantiate a fresh `SpeechRecognition` instance on every single utterance.
+- Additionally, naive keyword matching causes severe false positives (e.g., praising the agent when they say *"I will NOT send the quote"*). I implemented a regex-based negation parser that catches negative qualifiers (`not`, `won't`, `cannot`) and triggers realistic customer pushback while decreasing the pitch score.
+
+Q3: How does the telephony integration work with Twilio, and how do you handle local development without ngrok?
+Answer:
+- For real phone calls, the backend uses the Twilio Node.js SDK to initiate outbound PSTN calls using inline TwiML strings.
+- Because the TwiML is passed directly in the REST API payload to Twilio (`twiml: twimlResponse.toString()`), Twilio executes the text-to-speech greeting directly inside its cloud telecom infrastructure without needing to request a webhook from localhost. This completely eliminates the need for third-party tunnels like ngrok during local development.
+- For production, the server detects Render's automatic `RENDER_EXTERNAL_URL` and routes bi-directional speech recognition callbacks to `/api/twilio/voice-reply`.
+
+Q4: How is state managed across the application, and how does the dashboard stay reactive?
+Answer:
+- Global operational state is managed at the `App.jsx` level using React hooks (`useState`, `useEffect`) and passed down through clean props.
+- When an agent completes a call or checks a task, the central mutation function `markLeadAndTaskCompleted` executes in constant time:
+  1. It maps over the `tasks` array and marks the matching task as completed with a timestamp (`Called just now`).
+  2. It increments `callsPlacedCount` and updates the shift quota counter (`18 / 25` -> `20 / 25`).
+  3. It updates the "Who's Waiting" queue and changes the lead's status to `Contacted`.
+- This ensures high UI reactivity without the memory overhead of complex global stores like Redux.
+
+Q5: What security practices did you implement for API keys and secrets?
+Answer:
+- All sensitive credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMBER`, `AGENT_PHONE`) are strictly stored in root `.env` files and excluded from Git using `.gitignore`.
+- The `/api/health` endpoint sanitizes output by returning masked strings (e.g., `+141...` and `+9198...`) and boolean flags so that backend health can be validated without exposing raw credentials in browser network tabs.
+
+Q6: How would you scale this architecture to 500 retail stores across India?
+Answer:
+1. WebSockets / PubSub: Replace polling with a lightweight WebSocket server (or Redis Pub/Sub) so that when a walkout occurs at Indiranagar Store #14, the task pops up on Arvind's screen in real time with zero latency.
+2. WebRTC / Twilio Voice SDK: Transition the browser calling from Web Speech API to Twilio Voice Client WebRTC so that agents wearing USB headsets can talk directly through the browser to the customer's phone over a SIP trunk.
+3. Database Tier: Move from in-memory mock data to PostgreSQL with Prisma ORM, partitioning leads by store ID and agent shift schedules.
+
+================================================================================
+8. PRODUCTION DEPLOYMENT & CLOUD CONFIGURATION
+================================================================================
+
+8.1 BACKEND (Render.com):
+- Service Type: Web Service (Node Runtime)
+- Root Directory: `calling-backend`
+- Build Command: `npm install`
+- Start Command: `node server.js`
+- Environment Variables Configured:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_NUMBER`
+  - `AGENT_PHONE`
+
+8.2 FRONTEND (Vercel):
+- Framework Preset: Vite
+- Root Directory: `frontend`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Environment Variable:
+  - `VITE_API_URL`: Points to live Render backend (`https://onground-backend.onrender.com`)
+- Single Page Application Rewrite (`frontend/vercel.json`):
+  ```json
+  {
+    "rewrites": [
+      { "source": "/(.*)", "destination": "/" }
+    ]
+  }
+  ```
+  Guarantees that route reloads and browser refreshes never return 404 errors.
+
+================================================================================
+END OF MASTER GUIDE · ON-GROUND.AI ENGINEERING SUBMISSION
+================================================================================

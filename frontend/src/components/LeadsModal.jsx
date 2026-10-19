@@ -1,15 +1,15 @@
 // Import standard React hooks
 import React, { useState } from 'react';
 // Import icons from lucide-react library
-import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, PhoneCall, Zap, ShieldCheck, Check, Clock, AlertTriangle } from 'lucide-react';
-// Import mock leads data
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, PhoneCall, Zap, ShieldCheck, Check, Clock, AlertTriangle, Trash2 } from 'lucide-react';
+// Import mock leads data fallback
 import { mockLeads } from '../mockData';
 
 // LeadsModal component showing the in-depth lead dossier with ICP breakdown and calling buttons
-export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerInAppCall }) {
+export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerInAppCall, leads = mockLeads, onDeleteLead }) {
   // Find initial lead index based on passed leadId
-  const initialIndex = Math.max(0, mockLeads.findIndex((l) => l.id === leadId));
-  // State for active lead index in the modal (0 to 4)
+  const initialIndex = Math.max(0, leads.findIndex((l) => l.id === leadId));
+  // State for active lead index in the modal
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   // State for collapsible sections
   const [openSection, setOpenSection] = useState({
@@ -19,12 +19,12 @@ export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerIn
   });
 
   // Current lead object
-  const currentLead = mockLeads[currentIndex] || mockLeads[0];
+  const currentLead = leads[currentIndex] || leads[0] || mockLeads[0];
 
   // Next lead handler
   const handleNext = () => {
     // Increment index if within bounds
-    if (currentIndex < mockLeads.length - 1) {
+    if (currentIndex < leads.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -84,7 +84,7 @@ export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerIn
           {/* Lead Paging indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc' }}>
-              Lead {currentIndex + 1} of {mockLeads.length}
+              Lead {currentIndex + 1} of {leads.length}
             </span>
             <span style={{
               fontSize: '11px',
@@ -99,26 +99,61 @@ export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerIn
             </span>
           </div>
 
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            style={{
-              padding: '4px',
-              borderRadius: '6px',
-              color: '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <X size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Delete Lead Action */}
+            {onDeleteLead && (
+              <button
+                onClick={() => {
+                  onDeleteLead(currentLead.id);
+                  onClose();
+                }}
+                title="Remove this lead"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Delete</span>
+              </button>
+            )}
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              style={{
+                padding: '4px',
+                borderRadius: '6px',
+                color: '#94a3b8',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
         <div style={{
           padding: '20px',
+          flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
           display: 'flex',
           flexDirection: 'column',
           gap: '16px'
@@ -298,12 +333,12 @@ export default function LeadsModal({ leadId, onClose, onTriggerCall, onTriggerIn
             </button>
             <button
               onClick={handleNext}
-              disabled={currentIndex === mockLeads.length - 1}
+              disabled={currentIndex === leads.length - 1}
               style={{
                 padding: '6px 10px',
                 borderRadius: '6px',
                 border: '1px solid #142a24',
-                color: currentIndex === mockLeads.length - 1 ? '#475569' : '#cbd5e1',
+                color: currentIndex === leads.length - 1 ? '#475569' : '#cbd5e1',
                 fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',

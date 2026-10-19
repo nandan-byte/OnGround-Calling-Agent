@@ -14,6 +14,8 @@ import CalendarView from './components/CalendarView';
 import Pulse from './components/Pulse';
 // Import LeadsModal component
 import LeadsModal from './components/LeadsModal';
+// Import AddLeadModal component
+import AddLeadModal from './components/AddLeadModal';
 // Import CallModal overlay for In-App voice roleplay
 import CallModal from './components/CallModal';
 // Import PhoneCallModal overlay for real PSTN mobile phone calls
@@ -39,13 +41,23 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   // Mobile drawer open state
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  // Add Lead Modal state
+  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
 
   // Dynamic reactive state for shift tasks, waiting queue, and KPIs
   const [tasks, setTasks] = useState(initialTasks);
   const [waitingQueue, setWaitingQueue] = useState(whoIsWaiting);
   const [callsPlacedCount, setCallsPlacedCount] = useState(18);
   const [leadsClosedToday, setLeadsClosedToday] = useState(6);
-  const [leadsList, setLeadsList] = useState(mockLeads);
+  // Initialize leads from localStorage or default mockLeads
+  const [leadsList, setLeadsList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('og_leads');
+      return saved ? JSON.parse(saved) : mockLeads;
+    } catch (e) {
+      return mockLeads;
+    }
+  });
 
   // Helper to mark lead and task as completed dynamically on call action
   const markLeadAndTaskCompleted = (contactName, leadId) => {
@@ -104,6 +116,62 @@ export default function App() {
       }
       return t;
     }));
+  };
+
+  // Add a new lead dynamically from the UI
+  const handleAddLead = (newLead) => {
+    const updatedLeads = [newLead, ...leadsList];
+    setLeadsList(updatedLeads);
+    try {
+      localStorage.setItem('og_leads', JSON.stringify(updatedLeads));
+    } catch (e) {}
+
+    // Add corresponding task to Dashboard
+    const newTask = {
+      id: `t-${Date.now()}`,
+      category: 'hot_lead',
+      title: `Follow up with ${newLead.name} (${newLead.product})`,
+      leadId: newLead.id,
+      priority: 'High Priority',
+      due: 'Just logged',
+      value: newLead.price,
+      completed: false
+    };
+    setTasks(prev => [newTask, ...prev]);
+
+    // Add to waiting queue
+    const newWait = {
+      id: `w-${Date.now()}`,
+      name: newLead.name,
+      waitTime: 'Just arrived',
+      product: newLead.product,
+      intent: newLead.status,
+      phone: newLead.phone,
+      urgency: 'high',
+      called: false
+    };
+    setWaitingQueue(prev => [newWait, ...prev]);
+
+    showToast(`Lead added: ${newLead.name} (${newLead.product})`);
+  };
+
+  // Delete a lead dynamically from the UI
+  const handleDeleteLead = (leadId) => {
+    const target = leadsList.find(l => l.id === leadId);
+    const updated = leadsList.filter(l => l.id !== leadId);
+    setLeadsList(updated);
+    try {
+      localStorage.setItem('og_leads', JSON.stringify(updated));
+    } catch (e) {}
+
+    // Remove matching task
+    setTasks(prev => prev.filter(t => t.leadId !== leadId));
+    // Remove from waiting queue
+    if (target) {
+      setWaitingQueue(prev => prev.filter(w => !w.name.toLowerCase().includes(target.name.toLowerCase())));
+    }
+
+    showToast(`Lead ${target ? target.name : ''} removed`);
   };
 
   // Trigger outbound Twilio phone call with full lead context
@@ -205,6 +273,7 @@ export default function App() {
               waitingQueue={waitingQueue}
               callsPlacedCount={callsPlacedCount}
               leadsClosedToday={leadsClosedToday}
+              onOpenAddLeadModal={() => setIsAddLeadModalOpen(true)}
             />
           )}
 
@@ -215,6 +284,8 @@ export default function App() {
               leads={leadsList}
               onOpenLeadModal={(leadId) => setActiveLeadId(leadId)}
               onTriggerCall={handleTriggerPhoneCall}
+              onOpenAddLeadModal={() => setIsAddLeadModalOpen(true)}
+              onDeleteLead={handleDeleteLead}
             />
           )}
 
@@ -234,11 +305,20 @@ export default function App() {
       {activeLeadId && (
         <LeadsModal
           leadId={activeLeadId}
+          leads={leadsList}
           onClose={() => setActiveLeadId(null)}
           onTriggerCall={handleTriggerPhoneCall}
           onTriggerInAppCall={handleTriggerInAppCall}
+          onDeleteLead={handleDeleteLead}
         />
       )}
+
+      {/* Add New Walkout Lead Modal Popup */}
+      <AddLeadModal
+        isOpen={isAddLeadModalOpen}
+        onClose={() => setIsAddLeadModalOpen(false)}
+        onAddLead={handleAddLead}
+      />
 
       {/* In-App Browser Voice Roleplay Modal */}
       {activeCall && activeCall.mode === 'in-app' && (

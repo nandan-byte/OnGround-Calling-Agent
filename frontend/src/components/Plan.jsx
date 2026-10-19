@@ -1,12 +1,12 @@
 // Import standard React hooks
 import React, { useState } from 'react';
 // Import icons from lucide-react library
-import { PhoneCall, PhoneIncoming, Clock, ChevronDown, ChevronUp, AlertCircle, Play, CheckCircle2, Sparkles, User, FileText, ArrowRight } from 'lucide-react';
+import { PhoneCall, PhoneIncoming, Clock, ChevronDown, ChevronUp, AlertCircle, Play, CheckCircle2, Sparkles, User, FileText, ArrowRight, UserPlus, Trash2 } from 'lucide-react';
 // Import mock data lists
 import { mockLeads, incomingCalls, recentCalls } from '../mockData';
 
 // Plan component providing Calls to make, Incoming, Recent, and Practice a call tabs
-export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall, leads = mockLeads }) {
+export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall, leads = mockLeads, onOpenAddLeadModal, onDeleteLead }) {
   // State for which row in "Calls to make" is expanded
   const [expandedRowId, setExpandedRowId] = useState('lead-1');
   // State for active page in "Calls to make"
@@ -53,7 +53,7 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
         paddingBottom: '14px'
       }}>
         {/* Sub-tab pills */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {/* Calls to make tab */}
           <button
             onClick={() => setSubTab('calls-to-make')}
@@ -67,7 +67,7 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
               border: `1px solid ${subTab === 'calls-to-make' ? '#10b981' : '#142a24'}`
             }}
           >
-            Calls to make ({mockLeads.length})
+            Calls to make ({leads.length})
           </button>
 
           {/* Incoming missed calls tab */}
@@ -136,33 +136,59 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
             <span>Practice a Call</span>
           </button>
         </div>
+
+        {/* Add Lead Action Button */}
+        {onOpenAddLeadModal && (
+          <button
+            onClick={onOpenAddLeadModal}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)'
+            }}
+          >
+            <UserPlus size={14} />
+            <span>+ Add New Lead</span>
+          </button>
+        )}
       </div>
 
       {/* SUB-VIEW 1: CALLS TO MAKE */}
       {subTab === 'calls-to-make' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Section banner */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <div>
               <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>Today's calling plan</h2>
               <p style={{ fontSize: '11px', color: '#94a3b8' }}>Ranked by AI ICP fit & buying intent score</p>
             </div>
-            {/* Pagination indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
-              <span>Page {currentPage} of 2</span>
-              <button
-                onClick={() => setCurrentPage(currentPage === 1 ? 2 : 1)}
-                style={{
-                  padding: '4px 8px',
-                  backgroundColor: '#0a1714',
-                  border: '1px solid #142a24',
-                  borderRadius: '4px',
-                  color: '#34d399',
-                  fontSize: '11px'
-                }}
-              >
-                {currentPage === 1 ? 'Next →' : '← Prev'}
-              </button>
+            {/* Pagination indicator & Quick Add */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                <span>Page {currentPage} of 2</span>
+                <button
+                  onClick={() => setCurrentPage(currentPage === 1 ? 2 : 1)}
+                  style={{
+                    padding: '4px 8px',
+                    backgroundColor: '#0a1714',
+                    border: '1px solid #142a24',
+                    borderRadius: '4px',
+                    color: '#34d399',
+                    fontSize: '11px'
+                  }}
+                >
+                  {currentPage === 1 ? 'Next →' : '← Prev'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -216,7 +242,7 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
                     </div>
 
                     {/* Scores and Call Button */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {/* Intent Score Badge */}
                       <span style={{
                         backgroundColor: '#2d220b',
@@ -255,6 +281,31 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
                         <PhoneCall size={12} />
                         <span>Call</span>
                       </button>
+
+                      {/* Delete Lead Action */}
+                      {onDeleteLead && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteLead(lead.id);
+                          }}
+                          title="Remove this lead"
+                          style={{
+                            backgroundColor: '#201014',
+                            border: '1px solid #4a1d24',
+                            color: '#f87171',
+                            padding: '6px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+
                       {/* Expand Chevron */}
                       {isExpanded ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
                     </div>

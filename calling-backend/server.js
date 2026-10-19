@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 // Import the official twilio SDK library
 const twilio = require('twilio');
+const { spawn } = require('child_process');
 
 // Initialize the Express web application instance
 const app = express();
@@ -26,177 +27,212 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Retrieve Twilio configuration safely from environment variables
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
-// Retrieve Twilio authentication token from environment variables
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-// Retrieve the Twilio phone number used as the caller ID
 const twilioNumber = process.env.TWILIO_NUMBER;
-// Retrieve the agent's verified phone number that receives the initial call
 const agentPhone = process.env.AGENT_PHONE;
 
 // Initialize the Twilio client using the credentials from .env
-const twilioClient = twilio(accountSid, authToken);
+const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
-// Health check endpoint to verify backend status without exposing secrets
-app.get('/api/health', (req, res) => {
-  // Check if all necessary environment variables are defined
-  const isTwilioConfigured = Boolean(accountSid && authToken && twilioNumber && agentPhone);
-  // Send back JSON response confirming server health and config state
-  res.json({
-    status: 'ok',
-    twilioConfigured: isTwilioConfigured,
-    twilioNumber: twilioNumber ? `${twilioNumber.slice(0, 4)}...` : null,
-    agentPhone: agentPhone ? `${agentPhone.slice(0, 5)}...` : null
+// Track active tunnel URL for real-time Twilio speech webhook callbacks
+let activeTunnelUrl = null;
+let pinggyProcess = null;
+
+// Connect high-speed SSH tunnel so Twilio cloud speech recognition connects to local PC
+function startPinggyTunnel(port) {
+  return new Promise((resolve) => {
+    if (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL) {
+      activeTunnelUrl = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL).replace(/\/$/, '');
+      console.log(`[Public Cloud URL Detected]: ${activeTunnelUrl}`);
+      return resolve(activeTunnelUrl);
+    }
+
+    try {
+      pinggyProcess = spawn('ssh', [
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'ServerAliveInterval=30',
+        '-p', '443',
+        `-R0:localhost:${port}`,
+        'a.pinggy.io'
+      ]);
+
+      let resolved = false;
+
+      const handleData = (data) => {
+        const text = data.toString();
+        const match = text.match(/https:\/\/[a-zA-Z0-9\.\-]+\.(?:free\.pinggy\.net|pinggy-free\.link|pinggy\.link)/);
+        if (match && !resolved) {
+          resolved = true;
+          activeTunnelUrl = match[0].replace(/\/$/, '');
+          console.log(`=======================================================`);
+          console.log(`[Interactive Two-Way Voice Tunnel Active]: ${activeTunnelUrl}`);
+          console.log(`Customer phone speech will reach this backend in real-time`);
+          console.log(`=======================================================`);
+          resolve(activeTunnelUrl);
+        }
+      };
+
+      pinggyProcess.stdout.on('data', handleData);
+      pinggyProcess.stderr.on('data', handleData);
+
+      pinggyProcess.on('close', () => {
+        console.log('[Pinggy Tunnel Disconnected]');
+        activeTunnelUrl = null;
+      });
+
+      // Timeout fallback after 6s
+      setTimeout(() => {
+        if (!resolved) {
+          console.log('[Tunnel Status]: Initializing in background...');
+          resolve(activeTunnelUrl);
+        }
+      }, 6000);
+    } catch (err) {
+      console.warn('[Pinggy Tunnel Error]:', err.message);
+      resolve(null);
+    }
   });
+}
+
+// Clean up background SSH tunnel on process exit
+process.on('SIGINT', () => {
+  if (pinggyProcess) pinggyProcess.kill();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  if (pinggyProcess) pinggyProcess.kill();
+  process.exit(0);
 });
 
 // Helper function to normalize phone number string into clean digits with leading plus
 function normalizePhone(phone) {
-  // Return empty string if phone is not provided
   if (!phone) return '';
-  // Strip all whitespace, parentheses, and dashes
   const cleaned = phone.replace(/[\s\-\(\)]/g, '');
-  // Ensure leading plus sign exists
   return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
 }
 
-// Endpoint to initiate a human-to-human call sequence
+// Helper to determine the effective public base URL
+function getEffectiveBaseUrl(req) {
+  if (process.env.PUBLIC_URL && process.env.PUBLIC_URL.startsWith('http') && !process.env.PUBLIC_URL.includes('localhost')) {
+    return process.env.PUBLIC_URL.replace(/\/$/, '');
+  }
+  if (process.env.RENDER_EXTERNAL_URL && process.env.RENDER_EXTERNAL_URL.startsWith('http')) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  }
+  if (activeTunnelUrl && activeTunnelUrl.startsWith('http')) {
+    return activeTunnelUrl.replace(/\/$/, '');
+  }
+  if (req) {
+    const fHost = req.headers['x-forwarded-host'] || req.get('host');
+    const fProto = req.headers['x-forwarded-proto'] || 'https';
+    if (fHost && !fHost.includes('localhost') && !fHost.includes('127.0.0.1')) {
+      return `${fProto}://${fHost}`;
+    }
+  }
+  return null;
+}
+
+// Health check endpoint to verify backend status without exposing secrets
+app.get('/api/health', (req, res) => {
+  const isTwilioConfigured = Boolean(accountSid && authToken && twilioNumber && agentPhone);
+  const effectiveUrl = getEffectiveBaseUrl(req);
+  res.json({
+    status: 'ok',
+    twilioConfigured: isTwilioConfigured,
+    twilioNumber: twilioNumber ? `${twilioNumber.slice(0, 4)}...` : null,
+    agentPhone: agentPhone ? `${agentPhone.slice(0, 5)}...` : null,
+    publicWebhookUrl: effectiveUrl,
+    speechInteractiveReady: Boolean(effectiveUrl)
+  });
+});
+
+// Endpoint to initiate a phone call sequence
 app.post('/api/call', async (req, res) => {
   try {
-    // Extract customer target phone, simulation flag, and lead context from request body
-    const { to, simulate, customerName, product, store } = req.body;
-    // Validate that the target phone number is provided
-    if (!to) {
-      // Return a 400 Bad Request error if the target number is missing
-      return res.status(400).json({ error: 'Target phone number "to" is required' });
+    const { to, customerName, product, store } = req.body;
+    if (!to && !agentPhone) {
+      return res.status(400).json({ error: 'Target phone number is required' });
     }
-    // Validate that the agent phone number is configured in .env
-    if (!agentPhone || !twilioNumber) {
-      // Return a 500 Server Error if phone numbers are not set
-      return res.status(500).json({ error: 'AGENT_PHONE or TWILIO_NUMBER is missing in .env' });
+    if (!agentPhone || !twilioNumber || !twilioClient) {
+      return res.status(500).json({ error: 'Twilio configuration is missing in .env' });
     }
 
-    // Normalize phone numbers for safe comparison and dialing
-    const cleanTo = normalizePhone(to);
-    // Normalize configured agent phone
-    const cleanAgent = normalizePhone(agentPhone);
-    // Determine if this is a solo testing simulation (calling own phone)
-    const isSoloSimulation = Boolean(simulate) || (cleanTo === cleanAgent);
+    const name = customerName || 'valued customer';
+    const prod = product || 'SmartGRID Luxe mattress';
+    const loc = store || 'Indiranagar store';
+    const effectiveBaseUrl = getEffectiveBaseUrl(req);
 
-    // Build the TwiML instructions executed when the agent answers the call
     const twimlResponse = new twilio.twiml.VoiceResponse();
-    // Add a 2-second pause so the mobile phone audio bearer is fully open after pickup
     twimlResponse.pause({ length: 2 });
 
-    // Handle solo testing simulation where The Sleep Company AI Agent calls the customer
-    if (isSoloSimulation) {
-      // Safe fallback customer name from lead data
-      const name = customerName || 'valued customer';
-      // Safe fallback product of interest from lead data
-      const prod = product || 'Ortho GRID King Size mattress';
-      // Safe fallback store location from lead data
-      const loc = store || 'Indiranagar store';
+    // Step 1: Personalized store representative greeting
+    twimlResponse.say(
+      { voice: 'alice', language: 'en-IN' },
+      `Hello ${name}! This is Sarah calling from The Sleep Company ${loc} regarding your inquiry for the ${prod}.`
+    );
 
-      // Determine public webhook URL if tunnel or domain is configured
-      const baseUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
-      const actionUrl = baseUrl ? `${baseUrl}/api/twilio/voice-reply` : '/api/twilio/voice-reply';
-
-      // The Sleep Company AI Representative greeting the customer
-      twimlResponse.say(
-        { voice: 'alice', language: 'en-IN' },
-        `Hello ${name}! This is Sarah calling from The Sleep Company ${loc} regarding your inquiry for the ${prod}. How can I help you today?`
-      );
-
-      // Listen to the caller's microphone on their phone using Speech Recognition
+    if (effectiveBaseUrl) {
+      // Two-way interactive speech mode: AI asks an open question and listens to customer speech
+      const actionUrl = `${effectiveBaseUrl}/api/twilio/voice-reply`;
       const gather = twimlResponse.gather({
         input: 'speech',
         action: actionUrl,
+        method: 'POST',
         language: 'en-IN',
         speechTimeout: 'auto',
-        timeout: 4
+        timeout: 5
       });
-      gather.say({ voice: 'alice', language: 'en-IN' }, 'Go ahead, I am listening.');
+      gather.say(
+        { voice: 'alice', language: 'en-IN' },
+        'I am calling to check how I can help you today with pricing, stock availability, or zero cost EMI? Go ahead, I am listening.'
+      );
 
-      // Fallback if no speech was detected
+      // Fallback if the customer stays silent before gather timeout
       twimlResponse.say(
         { voice: 'alice', language: 'en-IN' },
-        `I am happy to let you know that the ${prod} is in stock, and our 6-month zero-cost EMI on Bajaj Finserv is available today with our 10-year warranty. We will send the quotation link directly to your WhatsApp. Thank you for choosing The Sleep Company!`
+        `We are offering an exclusive 25% walkout recovery discount with 6-month zero-cost EMI on Bajaj Finserv, 10-year warranty, and free delivery on the ${prod}. I have just sent your quotation link directly to WhatsApp. Thank you for choosing The Sleep Company, have a wonderful day!`
       );
+      twimlResponse.hangup();
     } else {
-      // Use conference-based bridge: both agent and customer join the same room
-      // This avoids Dial verb failures on Twilio trial for international calls
-      const confName = `bridge_${Date.now()}`;
-
-      // Build TwiML for the agent: short announcement then join conference
-      twimlResponse.say({ voice: 'alice', language: 'en-IN' }, 'Connecting you to the customer now. Please hold.');
-      twimlResponse.dial().conference({
-        startConferenceOnEnter: true,
-        endConferenceOnExit: true
-      }, confName);
-
-      // Build TwiML for the customer: greeting then join the same conference
-      const custTwiml = new twilio.twiml.VoiceResponse();
-      custTwiml.pause({ length: 2 });
-      const custName = customerName || 'valued customer';
-      const prod = product || 'SmartGRID mattress';
-      const loc = store || 'our store';
-      custTwiml.say(
+      // Safe fallback when running without tunnel: delivers full pitch cleanly
+      twimlResponse.pause({ length: 1 });
+      twimlResponse.say(
         { voice: 'alice', language: 'en-IN' },
-        `Hello ${custName}! This is a call from The Sleep Company ${loc} regarding your inquiry for the ${prod}. Connecting you to our representative now.`
+        `I am following up on your store visit to share that the ${prod} is available in stock today with our exclusive 25% walkout recovery discount. Our 6-month zero-cost EMI on Bajaj Finserv is pre-approved for you with zero down payment, complete with our 10-year warranty and two complimentary luxury pillows.`
       );
-      custTwiml.dial().conference({
-        startConferenceOnEnter: true,
-        endConferenceOnExit: true
-      }, confName);
-
-      // Call the agent phone first
-      const agentCall = await twilioClient.calls.create({
-        twiml: twimlResponse.toString(),
-        to: agentPhone,
-        from: twilioNumber
-      });
-
-      // Call the customer phone simultaneously (independent call leg)
-      const customerCall = await twilioClient.calls.create({
-        twiml: custTwiml.toString(),
-        to: cleanTo,
-        from: twilioNumber
-      });
-
-      // Send success response back to the client with call metadata
-      return res.json({
-        success: true,
-        message: 'Conference bridge: calling both agent and customer into the same room',
-        agentCallSid: agentCall.sid,
-        customerCallSid: customerCall.sid,
-        conferenceName: confName,
-        agentPhone: agentPhone,
-        customerPhone: to,
-        customerName: customerName || 'Customer',
-        product: product,
-        isSoloSimulation: false
-      });
+      twimlResponse.pause({ length: 1 });
+      twimlResponse.say(
+        { voice: 'alice', language: 'en-IN' },
+        `I have just dispatched your official quotation and payment link directly to your WhatsApp. You can review the details and confirm your order anytime today. Thank you for choosing The Sleep Company, have a wonderful day!`
+      );
+      twimlResponse.hangup();
     }
 
-    // Trigger an outbound call to the agent first using the twiml instructions (solo simulation only)
+    // Twilio trial account dials the verified agent phone
+    const targetDialNumber = agentPhone;
+
+    console.log(`[Placing Call]: Dialing ${targetDialNumber} for lead "${name}" (${prod}) - Interactive Mode: ${Boolean(effectiveBaseUrl)}`);
+
     const call = await twilioClient.calls.create({
       twiml: twimlResponse.toString(),
-      to: agentPhone,
+      to: targetDialNumber,
       from: twilioNumber
     });
 
-    // Send success response back to the client with call metadata
+    console.log(`[Call Placed Successfully]: SID ${call.sid}`);
+
     res.json({
       success: true,
-      message: `Calling your phone with simulated customer ${customerName || 'Mukunda'} dialogue`,
+      message: `Calling your phone with AI representative Sarah dialogue for ${name}`,
       callSid: call.sid,
-      agentPhone: agentPhone,
-      customerPhone: to,
-      customerName: customerName || 'Mukunda',
-      product: product,
-      isSoloSimulation: isSoloSimulation
+      agentPhone: targetDialNumber,
+      customerPhone: to || targetDialNumber,
+      customerName: name,
+      product: prod,
+      interactive: Boolean(effectiveBaseUrl)
     });
   } catch (error) {
-    // Return friendly error details if Twilio rejects the call
+    console.error('[Error placing call]:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to place call'
@@ -215,7 +251,7 @@ app.get('/api/call-status/:callSid', async (req, res) => {
     res.json({
       success: true,
       sid: call.sid,
-      status: call.status, // queued, ringing, in-progress, completed, busy, failed, no-answer, canceled
+      status: call.status,
       duration: call.duration,
       to: call.to,
       from: call.from
@@ -239,51 +275,155 @@ app.post('/api/call/hangup', async (req, res) => {
   }
 });
 
-// Twilio webhook to evaluate spoken words from mobile phone and dynamically answer back
+// Two-way interactive webhook: evaluates user's speech and dynamically answers
 app.post('/api/twilio/voice-reply', (req, res) => {
-  const speech = req.body.SpeechResult || '';
-  const twiml = new twilio.twiml.VoiceResponse();
-  const lower = speech.toLowerCase();
-  const baseUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
-  const nextAction = baseUrl ? `${baseUrl}/api/twilio/voice-reply` : '/api/twilio/voice-reply';
+  try {
+    const speech = req.body.SpeechResult || '';
+    const twiml = new twilio.twiml.VoiceResponse();
+    const lower = speech.toLowerCase();
+    const effectiveBaseUrl = getEffectiveBaseUrl(req);
+    const nextAction = effectiveBaseUrl ? `${effectiveBaseUrl}/api/twilio/voice-reply` : undefined;
 
-  console.log(`[Twilio Call Audio from Phone]: "${speech}"`);
+    console.log(`[Twilio Call Audio from Phone]: "${speech}" (PublicUrl: ${effectiveBaseUrl || 'none'})`);
 
-  if (lower.includes('stock') || lower.includes('available') || lower.includes('have')) {
-    twiml.say({ voice: 'alice', language: 'en-IN' }, "Yes! The SmartGRID Ortho King size mattress is in stock today at our Indiranagar store, and we offer 6-month zero-cost EMI on Bajaj Finserv. Can I send the quotation and payment link to your WhatsApp?");
-    twiml.gather({ input: 'speech', action: nextAction, language: 'en-IN', speechTimeout: 'auto', timeout: 4 });
-  } else if (lower.includes('emi') || lower.includes('price') || lower.includes('cost') || lower.includes('bajaj') || lower.includes('discount')) {
-    twiml.say({ voice: 'alice', language: 'en-IN' }, "Our 6-month zero-cost EMI on Bajaj Finserv has zero down payment, and includes our 10-year warranty with 2 free pillows. Should I send the official quote to your WhatsApp?");
-    twiml.gather({ input: 'speech', action: nextAction, language: 'en-IN', speechTimeout: 'auto', timeout: 4 });
-  } else if (lower.includes('yes') || lower.includes('sure') || lower.includes('send') || lower.includes('whatsapp') || lower.includes('okay') || lower.includes('ok')) {
-    twiml.say({ voice: 'alice', language: 'en-IN' }, "Perfect! I have sent the quotation and discount link to your WhatsApp right now. You can finalize your order today. Thank you for choosing The Sleep Company!");
+    // Intent 1: Price / Cost / Discount / Offers
+    if (lower.includes('price') || lower.includes('cost') || lower.includes('how much') || lower.includes('rate') || lower.includes('quote') || lower.includes('discount') || lower.includes('offer')) {
+      if (effectiveBaseUrl) {
+        const gather = twiml.gather({
+          input: 'speech',
+          action: nextAction,
+          method: 'POST',
+          language: 'en-IN',
+          speechTimeout: 'auto',
+          timeout: 5
+        });
+        gather.say(
+          { voice: 'alice', language: 'en-IN' },
+          "The special walkout price is 25% off today, bringing it down to 9,000 rupees with 6-month zero-cost EMI on Bajaj Finserv and free express delivery. Should I send this official quotation directly to your WhatsApp?"
+        );
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "I have sent the official quotation link with your 25% discount to your WhatsApp right now. Thank you for choosing The Sleep Company, have a wonderful day!");
+        twiml.hangup();
+      } else {
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "The special walkout price is 25% off today, with 6-month zero-cost EMI on Bajaj Finserv. I have sent the quotation link directly to your WhatsApp right now. Thank you for choosing The Sleep Company, have a wonderful day!");
+        twiml.hangup();
+      }
+    }
+    // Intent 2: Stock availability / Delivery timeline
+    else if (lower.includes('stock') || lower.includes('available') || lower.includes('have') || lower.includes('deliver') || lower.includes('ready') || lower.includes('when')) {
+      if (effectiveBaseUrl) {
+        const gather = twiml.gather({
+          input: 'speech',
+          action: nextAction,
+          method: 'POST',
+          language: 'en-IN',
+          speechTimeout: 'auto',
+          timeout: 5
+        });
+        gather.say(
+          { voice: 'alice', language: 'en-IN' },
+          "Yes! The mattress is in stock today at our store with guaranteed 48-hour free delivery, 10-year warranty, and 6-month zero-cost EMI. Can I send the quotation link to your WhatsApp?"
+        );
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "I have sent the quotation link to your WhatsApp right now. Thank you for choosing The Sleep Company, have a great day!");
+        twiml.hangup();
+      } else {
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "Yes! The mattress is in stock today with 48-hour free delivery. I have sent the quotation link directly to your WhatsApp. Thank you for choosing The Sleep Company, have a great day!");
+        twiml.hangup();
+      }
+    }
+    // Intent 3: EMI / Financing / Payment options
+    else if (lower.includes('emi') || lower.includes('bajaj') || lower.includes('finance') || lower.includes('pay') || lower.includes('installment')) {
+      if (effectiveBaseUrl) {
+        const gather = twiml.gather({
+          input: 'speech',
+          action: nextAction,
+          method: 'POST',
+          language: 'en-IN',
+          speechTimeout: 'auto',
+          timeout: 5
+        });
+        gather.say(
+          { voice: 'alice', language: 'en-IN' },
+          "Our 6-month zero-cost EMI on Bajaj Finserv has zero interest and zero down payment. Would you like me to send the pre-approved EMI quotation to your WhatsApp?"
+        );
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "I have sent your pre-approved EMI quotation directly to your WhatsApp. Thank you for choosing The Sleep Company, have a great day!");
+        twiml.hangup();
+      } else {
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "Our 6-month zero-cost EMI on Bajaj Finserv has zero down payment. I have sent the EMI link directly to your WhatsApp. Thank you for choosing The Sleep Company!");
+        twiml.hangup();
+      }
+    }
+    // Intent 4: Dimensions / Size / Technology / Specs
+    else if (lower.includes('size') || lower.includes('king') || lower.includes('queen') || lower.includes('dimension') || lower.includes('ortho') || lower.includes('spec') || lower.includes('thick')) {
+      if (effectiveBaseUrl) {
+        const gather = twiml.gather({
+          input: 'speech',
+          action: nextAction,
+          method: 'POST',
+          language: 'en-IN',
+          speechTimeout: 'auto',
+          timeout: 5
+        });
+        gather.say(
+          { voice: 'alice', language: 'en-IN' },
+          "It is available in standard king and queen sizes with our patented Japanese SmartGRID orthopedic comfort layer. Should I send the specification sheet to your WhatsApp?"
+        );
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "I have sent the full specification sheet to your WhatsApp right now. Thank you for choosing The Sleep Company!");
+        twiml.hangup();
+      } else {
+        twiml.say({ voice: 'alice', language: 'en-IN' }, "It comes in king and queen sizes with patented Japanese SmartGRID technology. I have sent the full specifications to your WhatsApp. Thank you for choosing The Sleep Company!");
+        twiml.hangup();
+      }
+    }
+    // Intent 5: User agrees (Yes / Sure / Send it / Okay / WhatsApp)
+    else if (lower.includes('yes') || lower.includes('sure') || lower.includes('send') || lower.includes('whatsapp') || lower.includes('okay') || lower.includes('ok') || lower.includes('yeah') || lower.includes('please') || lower.includes('do that')) {
+      twiml.say(
+        { voice: 'alice', language: 'en-IN' },
+        "Wonderful! I have just sent your official quotation, 25% discount voucher, and payment link directly to your WhatsApp. You can review the details and confirm your order directly from your phone. Thank you for choosing The Sleep Company, have a great day!"
+      );
+      twiml.hangup();
+    }
+    // Intent 6: User declines (No / Cancel / Not interested / Later)
+    else if (lower.includes('no') || lower.includes('not') || lower.includes('cancel') || lower.includes('dont') || lower.includes("don't") || lower.includes('stop') || lower.includes('later')) {
+      twiml.say(
+        { voice: 'alice', language: 'en-IN' },
+        "No problem at all! Feel free to visit our store anytime or reach out whenever you're ready. Thank you for visiting The Sleep Company, have a wonderful day!"
+      );
+      twiml.hangup();
+    }
+    // Intent 7: Default fallback for any other speech
+    else {
+      twiml.say(
+        { voice: 'alice', language: 'en-IN' },
+        "Understood! I have dispatched the complete product catalogue, quotation, and store manager contact directly to your WhatsApp so you can review everything at your convenience. Thank you for choosing The Sleep Company, have a wonderful day!"
+      );
+      twiml.hangup();
+    }
+
+    res.type('text/xml');
+    res.send(twiml.toString());
+  } catch (err) {
+    console.error('[voice-reply error]', err);
+    const twiml = new twilio.twiml.VoiceResponse();
+    twiml.say({ voice: 'alice', language: 'en-IN' }, "Thank you for visiting The Sleep Company. We have sent your special quotation to WhatsApp. Have a great day!");
     twiml.hangup();
-  } else if (lower.includes('no') || lower.includes('not') || lower.includes("don't") || lower.includes("won't")) {
-    twiml.say({ voice: 'alice', language: 'en-IN' }, "No worries at all! Would you prefer me to email the details, or would you like to visit our Indiranagar store to try the mattress in person?");
-    twiml.gather({ input: 'speech', action: nextAction, language: 'en-IN', speechTimeout: 'auto', timeout: 4 });
-  } else {
-    twiml.say({ voice: 'alice', language: 'en-IN' }, "Understood! I can send the official quotation and discount link directly to your WhatsApp so you can review the details. Would you like me to send that now?");
-    twiml.gather({ input: 'speech', action: nextAction, language: 'en-IN', speechTimeout: 'auto', timeout: 4 });
+    res.type('text/xml');
+    res.send(twiml.toString());
   }
-
-  res.type('text/xml');
-  res.send(twiml.toString());
 });
 
 // Serve the quick HTML test page on the root or /test route
 app.get('/test', (req, res) => {
-  // Send the test HTML file located in the public directory
   res.sendFile(path.join(__dirname, 'public', 'test.html'));
 });
 
 // Serve the interactive browser-to-browser WebRTC calling simulator
 app.get('/browser-call', (req, res) => {
-  // Send the browser calling simulator HTML file
   res.sendFile(path.join(__dirname, 'public', 'browser-call.html'));
 });
 
 // Start listening for HTTP connections on the designated port
-app.listen(PORT, () => {
-  // Output a simple confirmation message indicating the server is running
+app.listen(PORT, async () => {
   console.log(`Calling backend running on http://localhost:${PORT}`);
+  // Connect high-performance SSH tunnel for Twilio speech webhooks
+  await startPinggyTunnel(PORT);
 });

@@ -3,7 +3,7 @@ import React from 'react';
 // Import Recharts components for data visualization
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 // Import icons from lucide-react library
-import { PhoneCall, Users, Clock, TrendingUp, CheckCircle, Check, Flame, ArrowUpRight, ShieldCheck, DollarSign } from 'lucide-react';
+import { PhoneCall, Users, Clock, TrendingUp, CheckCircle, Check, Flame, ArrowUpRight, ShieldCheck, DollarSign, UserPlus } from 'lucide-react';
 // Import mock data constants
 import { agentProfile, whoIsWaiting, initialTasks, weeklyCallData } from '../mockData';
 
@@ -16,7 +16,8 @@ export default function Dashboard({
   waitingQueue = whoIsWaiting,
   onTriggerInAppCall,
   callsPlacedCount = 18,
-  leadsClosedToday = 6
+  leadsClosedToday = 6,
+  onOpenAddLeadModal
 }) {
   // Calculate dynamic pending and completed counts
   const pendingTasksCount = tasks.filter(t => !t.completed).length;
@@ -43,24 +44,49 @@ export default function Dashboard({
           </p>
         </div>
 
-        {/* Quick Shift Target Summary Pill */}
-        <div style={{
-          backgroundColor: '#0a1714',
-          border: '1px solid #142a24',
-          borderRadius: '8px',
-          padding: '8px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
-          <div>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Shift Progress</div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#34d399' }}>{leadsClosedToday} closed / 10 target</div>
-          </div>
-          <div style={{ width: '1px', height: '24px', backgroundColor: '#142a24' }}></div>
-          <div>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Calls Placed</div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#f1f5f9' }}>{callsPlacedCount} / 25 calls</div>
+        {/* Right side Actions: Add Lead button & Quick Shift Target Summary Pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {onOpenAddLeadModal && (
+            <button
+              onClick={onOpenAddLeadModal}
+              style={{
+                backgroundColor: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '9px 16px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)'
+              }}
+            >
+              <UserPlus size={15} />
+              <span>+ Log Walkout Lead</span>
+            </button>
+          )}
+
+          <div style={{
+            backgroundColor: '#0a1714',
+            border: '1px solid #142a24',
+            borderRadius: '8px',
+            padding: '8px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <div>
+              <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Shift Progress</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#34d399' }}>{leadsClosedToday} closed / 10 target</div>
+            </div>
+            <div style={{ width: '1px', height: '24px', backgroundColor: '#142a24' }}></div>
+            <div>
+              <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Calls Placed</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#f1f5f9' }}>{callsPlacedCount} / 25 calls</div>
+            </div>
           </div>
         </div>
       </div>
@@ -207,7 +233,7 @@ export default function Dashboard({
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>Who is waiting (Floor Walk-outs)</span>
-            <span style={{ fontSize: '11px', color: '#f87171', fontWeight: 600 }}>2 Shoppers</span>
+            <span style={{ fontSize: '11px', color: '#f87171', fontWeight: 600 }}>{waitingQueue.length} Shoppers</span>
           </div>
           {/* List of waiting shoppers */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
