@@ -1,15 +1,14 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 // Export function to initiate a real Twilio phone call sequence
 export async function triggerPhoneCall(targetPhoneNumber, leadContext = {}) {
   try {
-    // Send POST request to the local backend /api/call endpoint
-    const response = await fetch('/api/call', {
-      // HTTP POST method
+    // Send POST request to backend /api/call endpoint
+    const response = await fetch(`${API_BASE}/api/call`, {
       method: 'POST',
-      // Declare JSON content header
       headers: {
         'Content-Type': 'application/json',
       },
-      // Pass the target phone number and full lead context in request body
       body: JSON.stringify({
         to: targetPhoneNumber,
         customerName: leadContext.customerName || leadContext.name,
@@ -18,12 +17,9 @@ export async function triggerPhoneCall(targetPhoneNumber, leadContext = {}) {
       }),
     });
 
-    // Parse the JSON response from backend
     const data = await response.json();
-    // Return the response data
     return data;
   } catch (error) {
-    // Return structured failure response if network request fails
     return {
       success: false,
       error: error.message || 'Network error connecting to calling server',
@@ -34,14 +30,10 @@ export async function triggerPhoneCall(targetPhoneNumber, leadContext = {}) {
 // Export function to check backend connectivity
 export async function checkBackendHealth() {
   try {
-    // Fetch backend health status
-    const response = await fetch('/api/health');
-    // Parse response
+    const response = await fetch(`${API_BASE}/api/health`);
     const data = await response.json();
-    // Return backend status
     return data;
   } catch (error) {
-    // Return offline state if backend is unreachable
     return { status: 'offline', error: error.message };
   }
 }

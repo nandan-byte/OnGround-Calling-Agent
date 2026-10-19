@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, PhoneOff, Signal, CheckCircle2, Clock } from 'lucide-react';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export default function PhoneCallModal({ callState, onHangup }) {
   const [seconds, setSeconds] = useState(0);
   const [callStatus, setCallStatus] = useState(callState.status || 'Dialing phone network...');
@@ -23,7 +25,7 @@ export default function PhoneCallModal({ callState, onHangup }) {
     let isMounted = true;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/call-status/${callSid}`);
+        const res = await fetch(`${API_BASE}/api/call-status/${callSid}`);
         const data = await res.json();
         if (data.success && isMounted) {
           if (data.status === 'in-progress') {
@@ -55,7 +57,7 @@ export default function PhoneCallModal({ callState, onHangup }) {
   const handleRemoteHangup = async () => {
     if (callState.callSid) {
       try {
-        await fetch('/api/call/hangup', {
+        await fetch(`${API_BASE}/api/call/hangup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ callSid: callState.callSid })
