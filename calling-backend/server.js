@@ -1,6 +1,7 @@
 // Import required Node.js path module to locate files
 const path = require('path');
-// Load environment variables from the root .env file
+// Load environment variables (supports cloud hosting, local root, or local subfolder)
+require('dotenv').config();
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 // Import express framework to create the HTTP server
 const express = require('express');
@@ -96,7 +97,7 @@ app.post('/api/call', async (req, res) => {
       const loc = store || 'Indiranagar store';
 
       // Determine public webhook URL if tunnel or domain is configured
-      const baseUrl = process.env.PUBLIC_URL || '';
+      const baseUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
       const actionUrl = baseUrl ? `${baseUrl}/api/twilio/voice-reply` : '/api/twilio/voice-reply';
 
       // The Sleep Company AI Representative greeting the customer
@@ -243,7 +244,7 @@ app.post('/api/twilio/voice-reply', (req, res) => {
   const speech = req.body.SpeechResult || '';
   const twiml = new twilio.twiml.VoiceResponse();
   const lower = speech.toLowerCase();
-  const baseUrl = process.env.PUBLIC_URL || '';
+  const baseUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
   const nextAction = baseUrl ? `${baseUrl}/api/twilio/voice-reply` : '/api/twilio/voice-reply';
 
   console.log(`[Twilio Call Audio from Phone]: "${speech}"`);
