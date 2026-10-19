@@ -71,7 +71,7 @@ graph TB
     end
 
     subgraph Carriers ["External Carriers & Devices"]
-        AgentPhone["Agent Mobile Phone<br/>(+91 9876543210)"]
+        AgentPhone["Agent Mobile Phone<br/>(Verified Caller ID)"]
         CustomerPhone["Customer Mobile Phone<br/>(PSTN Destination)"]
     end
 
@@ -98,8 +98,8 @@ sequenceDiagram
     participant WebUI as Portal UI (React)
     participant API as Express Server (/api/call)
     participant Twilio as Twilio Cloud Voice API
-    actor Mobile as Agent Phone (+91 98765...)
-    actor Cust as Customer Phone
+    actor Mobile as Agent Phone (Verified Caller ID)
+    actor Cust as Customer Phone (Verified Destination)
 
     Agent->>WebUI: Clicks "Phone call" or "Call back" on Lead Dossier
     WebUI->>API: POST /api/call { to, customerName, product, store }
@@ -225,6 +225,12 @@ All 8 screens mandated by the hiring assignment specification are fully implemen
 - **Twilio Account**: Account SID, Auth Token, and Twilio Number
 - **LiveKit Cloud Project**: URL, API Key, and Secret
 
+> [!IMPORTANT]
+> **Twilio Free Trial Account Notice (Verified Numbers Only)**:
+> Under Twilio's Free Trial policy, outbound phone calls can **strictly and only be placed to phone numbers that have been verified** in your Twilio Console under **Phone Numbers > Manage > [Verified Caller IDs](https://console.twilio.com/us1/develop/phone-numbers/manage/verified)**.
+> - Any phone number you intend to test or dial (including `AGENT_PHONE` and destination customer numbers) **must be verified** first with an OTP.
+> - Calls attempted to unverified numbers will be automatically blocked by Twilio with error `21215` / `13227`.
+
 ---
 
 ### Step 1: Clone & Configure Environment
@@ -290,8 +296,8 @@ All environment secrets are consolidated into a single root `.env` file (which i
 |---|---|:---:|---|
 | `TWILIO_ACCOUNT_SID` | Twilio Account SID from Console dashboard | **Yes** | `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
 | `TWILIO_AUTH_TOKEN` | Twilio primary authentication token | **Yes** | `your_twilio_auth_token` |
-| `TWILIO_NUMBER` | Outbound caller ID provisioned in Twilio | **Yes** | `+12025550123` |
-| `AGENT_PHONE` | Primary verified agent phone number | **Yes** | `+919876543210` |
+| `TWILIO_NUMBER` | Outbound caller ID provisioned in Twilio | **Yes** | `+1XXXXXXXXXX` (Purchased Twilio number) |
+| `AGENT_PHONE` | Agent phone number to ring first | **Yes** | `+91XXXXXXXXXX` (**Must be verified in Twilio**) |
 | `LIVEKIT_URL` | Cloud project WebSockets endpoint | **Yes** | `wss://your-project.livekit.cloud` |
 | `LIVEKIT_API_KEY` | LiveKit Cloud access key | **Yes** | `your_livekit_api_key` |
 | `LIVEKIT_API_SECRET` | LiveKit Cloud access secret | **Yes** | `your_livekit_api_secret` |
@@ -309,7 +315,7 @@ Enterprise call centers never make customers listen to ring tones. The outbound 
 2. **API Dispatch**: The React frontend sends a `POST /api/call` to the Express backend with customer and product metadata:
    ```json
    {
-     "to": "+919876543210",
+     "to": "+91XXXXXXXXXX",
      "simulate": true,
      "customerName": "Mukunda",
      "product": "Ortho GRID King Size mattress",
@@ -321,6 +327,9 @@ Enterprise call centers never make customers listen to ring tones. The outbound 
    - Synthesizes clear Indian-English speech using the `alice` voice profile (`language: en-IN`).
    - For multi-party calls, Twilio initiates an independent second call leg and joins both into a secure conference bridge.
 4. **Zero Tunnels Needed**: By utilizing inline TwiML strings directly in the REST API call, Twilio executes all voice logic in the cloud—completely eliminating the need for `ngrok` or public webhook tunneling during local development.
+
+> [!NOTE]
+> **Free Trial Dialing Rule**: When testing with a Twilio trial account, the `to` recipient phone number **must be added as a Verified Caller ID** in your Twilio Console account. Twilio trial accounts do not have permission to dial unverified phone numbers.
 
 ---
 
