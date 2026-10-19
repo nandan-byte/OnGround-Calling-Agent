@@ -6,7 +6,7 @@ import { PhoneCall, PhoneIncoming, Clock, ChevronDown, ChevronUp, AlertCircle, P
 import { mockLeads, incomingCalls, recentCalls } from '../mockData';
 
 // Plan component providing Calls to make, Incoming, Recent, and Practice a call tabs
-export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall }) {
+export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall, leads = mockLeads }) {
   // State for which row in "Calls to make" is expanded
   const [expandedRowId, setExpandedRowId] = useState('lead-1');
   // State for active page in "Calls to make"
@@ -168,7 +168,7 @@ export default function Plan({ subTab, setSubTab, onOpenLeadModal, onTriggerCall
 
           {/* Table List of Outgoing Calls */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {mockLeads.map((lead, idx) => {
+            {leads.map((lead, idx) => {
               const isExpanded = expandedRowId === lead.id;
               return (
                 <div

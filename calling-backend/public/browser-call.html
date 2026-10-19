@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>On-Ground.ai · WebRTC Browser Calling Engine</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #08100d;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #0a1714;
+      border-bottom: 1px solid #14382e;
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      background: #0d2821;
+      border: 1px solid #14382e;
+      color: #10b981;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .container {
+      flex: 1;
+      display: flex;
+      padding: 24px;
+      gap: 24px;
+      justify-content: center;
+      align-items: stretch;
+    }
+    .pane {
+      flex: 1;
+      max-width: 520px;
+      background: #0d1a16;
+      border: 1px solid #173f34;
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #173f34;
+    }
+    .pane-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-pill {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      background: #1e293b;
+      color: #94a3b8;
+    }
+    .status-pill.idle { background: #132b24; color: #94a3b8; }
+    .status-pill.calling { background: #3b280a; color: #f59e0b; animation: pulse 1.5s infinite; }
+    .status-pill.active { background: #064e3b; color: #34d399; }
+    .status-pill.ended { background: #450a0a; color: #f87171; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    .user-card {
+      background: #11241f;
+      border: 1px solid #1a493c;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #14382e;
+      color: #10b981;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .user-info h3 { font-size: 1rem; margin-bottom: 4px; color: #f8fafc; }
+    .user-info p { font-size: 0.8rem; color: #94a3b8; }
+
+    .call-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 0;
+      text-align: center;
+    }
+    .timer {
+      font-size: 2.2rem;
+      font-family: monospace;
+      font-weight: 700;
+      color: #34d399;
+      margin-bottom: 12px;
+    }
+    .wave-bars {
+      display: flex;
+      gap: 5px;
+      height: 40px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .wave-bar {
+      width: 5px;
+      height: 12px;
+      background: #10b981;
+      border-radius: 3px;
+      transition: height 0.15s ease;
+    }
+    .wave-bar.animating {
+      animation: soundWave 1.2s infinite ease-in-out;
+    }
+    @keyframes soundWave {
+      0%, 100% { height: 10px; }
+      50% { height: 36px; }
+    }
+    .call-caption {
+      font-size: 0.88rem;
+      color: #94a3b8;
+      max-width: 320px;
+      line-height: 1.4;
+      min-height: 40px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      margin-top: 20px;
+    }
+    button {
+      flex: 1;
+      padding: 12px 18px;
+      border-radius: 10px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-call { background: #10b981; color: #022c22; }
+    .btn-call:hover { background: #34d399; }
+    .btn-answer { background: #10b981; color: #022c22; animation: ringPulse 1s infinite; }
+    @keyframes ringPulse { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+    .btn-decline { background: #ef4444; color: #fff; }
+    .btn-decline:hover { background: #dc2626; }
+    .btn-hangup { background: #dc2626; color: #fff; }
+    .btn-hangup:hover { background: #b91c1c; }
+    .btn-control {
+      background: #14382e;
+      color: #f1f5f9;
+      flex: 0 0 46px;
+      height: 46px;
+      border-radius: 50%;
+      padding: 0;
+    }
+    .btn-control.active { background: #ef4444; }
+
+    .transcript-box {
+      width: 100%;
+      background: #091411;
+      border: 1px solid #14382e;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 14px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      max-height: 90px;
+      overflow-y: auto;
+      text-align: left;
+    }
+    .transcript-entry { margin-bottom: 4px; }
+    .transcript-entry strong { color: #34d399; }
+
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-tab {
+      background: #11241f;
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      border: 1px solid #1a493c;
+    }
+    .nav-tab.active {
+      background: #10b981;
+      color: #022c22;
+      border-color: #10b981;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="badge">Live WebRTC</span>
+      <strong style="color: #f8fafc; font-size: 1.05rem;">On-Ground.ai · Browser Calling Simulator</strong>
+    </div>
+    <div class="nav-tabs">
+      <a href="?role=split" class="nav-tab" id="tabSplit">Dual Browser View</a>
+      <a href="?role=agent" class="nav-tab" id="tabAgent">Agent Tab Only</a>
+      <a href="?role=customer" class="nav-tab" id="tabCustomer">Customer Tab Only</a>
+      <a href="http://localhost:3000" class="nav-tab" style="background: #0d2821; color: #10b981;">Back to Portal</a>
+    </div>
+  </header>
+
+  <div class="container" id="container">
+    <!-- Agent Side Pane -->
+    <div class="pane" id="agentPane">
+      <div class="pane-header">
+        <div class="pane-title">
+          <span>🎧</span>
+          <span>Agent Console (Browser 1)</span>
+        </div>
+        <span class="status-pill idle" id="agentStatus">Idle · Ready</span>
+      </div>
+
+      <div class="user-card">
+        <div class="avatar">AR</div>
+        <div class="user-info">
+          <h3>Arvind Rajan (Agent)</h3>
+          <p>The Sleep Company · Store Walkout Team</p>
+        </div>
+      </div>
+
+      <div class="call-stage">
+        <div class="timer" id="agentTimer">00:00</div>
+        <div class="wave-bars" id="agentWaves">
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        </div>
+        <p class="call-caption" id="agentCaption">Ready to call lead Mukunda regarding the SmartGRID King Size Mattress inquiry.</p>
+      </div>
+
+      <div class="transcript-box" id="agentTranscript">
+        <div class="transcript-entry"><strong>System:</strong> WebRTC channel ready. Open customer in 2nd tab or view side-by-side.</div>
+      </div>
+
+      <div class="btn-group" id="agentControls">
+        <button class="btn-call" id="btnAgentCall" onclick="agentStartCall()">
+          <span>⚡</span> Call Customer (Mukunda)
+        </button>
+      </div>
+    </div>
+
+    <!-- Customer Side Pane -->
+    <div class="pane" id="customerPane">
+      <div class="pane-header">
+        <div class="pane-title">
+          <span>📱</span>
+          <span>Customer Device (Browser 2)</span>
+        </div>
+        <span class="status-pill idle" id="customerStatus">Idle · Waiting</span>
+      </div>
+
+      <div class="user-card">
+        <div class="avatar" style="color: #38bdf8; background: #0c2838;">MK</div>
+        <div class="user-info">
+          <h3>Mukunda (Customer)</h3>
+          <p>Visited Indiranagar Store · Lead Score: 92% Intent</p>
+        </div>
+      </div>
+
+      <div class="call-stage">
+        <div class="timer" id="customerTimer" style="color: #38bdf8;">00:00</div>
+        <div class="wave-bars" id="customerWaves">
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+          <div class="wave-bar" style="background: #38bdf8;"></div>
+        </div>
+        <p class="call-caption" id="customerCaption">Phone standby. Waiting for callback from store.</p>
+      </div>
+
+      <div class="transcript-box" id="customerTranscript">
+        <div class="transcript-entry"><strong>System:</strong> Customer device online. Listening on WebRTC channel.</div>
+      </div>
+
+      <div class="btn-group" id="customerControls">
+        <button class="btn-call" disabled style="background: #14382e; color: #64748b; cursor: default;">
+          Waiting for incoming call...
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Determine view mode from URL params: 'split' (default), 'agent', or 'customer'
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleParam = urlParams.get('role') || 'split';
+
+    // Highlight active nav tab
+    if (roleParam === 'agent') {
+      document.getElementById('tabAgent').classList.add('active');
+      document.getElementById('customerPane').style.display = 'none';
+      document.getElementById('agentPane').style.maxWidth = '600px';
+    } else if (roleParam === 'customer') {
+      document.getElementById('tabCustomer').classList.add('active');
+      document.getElementById('agentPane').style.display = 'none';
+      document.getElementById('customerPane').style.maxWidth = '600px';
+    } else {
+      document.getElementById('tabSplit').classList.add('active');
+    }
+
+    // Inter-tab WebRTC communication via BroadcastChannel
+    const channel = new BroadcastChannel('onground-call-channel');
+
+    let callTimerInterval = null;
+    let callSeconds = 0;
+    let audioCtx = null;
+    let ringOscillator = null;
+
+    // Web Audio Sound Generator for Ringing Tone
+    function playRingtone() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        ringOscillator = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        ringOscillator.type = 'sine';
+        ringOscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // 440 Hz standard phone tone
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        ringOscillator.connect(gain);
+        gain.connect(audioCtx.destination);
+        ringOscillator.start();
+      } catch (e) {
+        console.log('AudioContext not allowed without user gesture yet:', e);
+      }
+    }
+
+    function stopRingtone() {
+      if (ringOscillator) {
+        try { ringOscillator.stop(); ringOscillator.disconnect(); } catch (e) {}
+        ringOscillator = null;
+      }
+    }
+
+    // Agent clicks "Call Customer"
+    function agentStartCall() {
+      // Broadcast CALL_INITIATED across all browser tabs
+      channel.postMessage({
+        type: 'CALL_INITIATED',
+        caller: 'Arvind Rajan (Agent)',
+        recipient: 'Mukunda',
+        product: 'SmartGRID King Size Mattress',
+        timestamp: Date.now()
+      });
+      applyCallInitiatedOnAgent();
+
+      // In split view (both roles on same page), trigger customer pane directly
+      if (roleParam === 'split') {
+        applyCallInitiatedOnCustomer();
+      }
+    }
+
+    function applyCallInitiatedOnAgent() {
+      document.getElementById('agentStatus').className = 'status-pill calling';
+      document.getElementById('agentStatus').innerText = 'Calling Customer...';
+      document.getElementById('agentCaption').innerText = 'Calling Mukunda... Ringing customer device via WebRTC.';
+      document.getElementById('agentControls').innerHTML = `
+        <button class="btn-hangup" onclick="endCall('Agent cancelled call')">
+          <span>✕</span> Cancel Call
+        </button>
+      `;
+      addTranscript('agent', 'System', 'Outbound WebRTC call initiated to Mukunda.');
+    }
+
+    // Customer receives CALL_INITIATED
+    function applyCallInitiatedOnCustomer() {
+      playRingtone();
+      document.getElementById('customerStatus').className = 'status-pill calling';
+      document.getElementById('customerStatus').innerText = 'Incoming Call 🔔';
+      document.getElementById('customerCaption').innerHTML = '<strong>Incoming call from The Sleep Company</strong><br/>Agent: Arvind Rajan';
+      document.getElementById('customerControls').innerHTML = `
+        <button class="btn-answer" onclick="customerAcceptCall()">
+          <span>📞</span> Accept Call
+        </button>
+        <button class="btn-decline" onclick="endCall('Customer declined call')">
+          <span>✕</span> Decline
+        </button>
+      `;
+      addTranscript('customer', 'The Sleep Company', 'Incoming call from store agent Arvind Rajan regarding SmartGRID Mattress.');
+    }
+
+    // Customer clicks "Accept Call"
+    function customerAcceptCall() {
+      stopRingtone();
+      channel.postMessage({
+        type: 'CALL_ACCEPTED',
+        timestamp: Date.now()
+      });
+      startActiveCall();
+    }
+
+    function startActiveCall() {
+      stopRingtone();
+      callSeconds = 0;
+      clearInterval(callTimerInterval);
+      callTimerInterval = setInterval(() => {
+        callSeconds++;
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
+        const formatted = `${mins}:${secs}`;
+        if (document.getElementById('agentTimer')) document.getElementById('agentTimer').innerText = formatted;
+        if (document.getElementById('customerTimer')) document.getElementById('customerTimer').innerText = formatted;
+      }, 1000);
+
+      // Animate wavebars on both sides
+      document.querySelectorAll('.wave-bar').forEach(b => b.classList.add('animating'));
+
+      // Agent Active View
+      if (document.getElementById('agentStatus')) {
+        document.getElementById('agentStatus').className = 'status-pill active';
+        document.getElementById('agentStatus').innerText = 'Connected · WebRTC Live';
+        document.getElementById('agentCaption').innerText = 'Active 2-way conversation with Mukunda. Audio streaming in real time.';
+        document.getElementById('agentControls').innerHTML = `
+          <button class="btn-control" id="btnAgentMic" onclick="toggleMic('agent')">🎙️</button>
+          <button class="btn-control" id="btnAgentSpeaker" onclick="toggleSpeaker('agent')">🔊</button>
+          <button class="btn-hangup" onclick="endCall('Agent hung up')">
+            <span>✕</span> End Call
+          </button>
+        `;
+        addTranscript('agent', 'Mukunda', 'Hello! Yes, I was checking the Ortho King size mattress at your Indiranagar store.');
+      }
+
+      // Customer Active View
+      if (document.getElementById('customerStatus')) {
+        document.getElementById('customerStatus').className = 'status-pill active';
+        document.getElementById('customerStatus').innerText = 'Connected · In Call';
+        document.getElementById('customerCaption').innerText = 'Connected to store representative Arvind Rajan. Inquiring on 6-month EMI.';
+        document.getElementById('customerControls').innerHTML = `
+          <button class="btn-control" id="btnCustMic" onclick="toggleMic('customer')">🎙️</button>
+          <button class="btn-hangup" onclick="endCall('Customer ended call')">
+            <span>✕</span> End Call
+          </button>
+        `;
+        addTranscript('customer', 'Arvind (Agent)', 'Hello Mukunda! We have the SmartGRID mattress in stock with zero-cost EMI.');
+      }
+    }
+
+    // Either side clicks End Call
+    function endCall(reason = 'Call ended') {
+      stopRingtone();
+      clearInterval(callTimerInterval);
+      channel.postMessage({
+        type: 'CALL_ENDED',
+        reason: reason,
+        duration: callSeconds,
+        timestamp: Date.now()
+      });
+      applyCallEnded(reason);
+    }
+
+    function applyCallEnded(reason) {
+      stopRingtone();
+      clearInterval(callTimerInterval);
+      document.querySelectorAll('.wave-bar').forEach(b => b.classList.remove('animating'));
+
+      if (document.getElementById('agentStatus')) {
+        document.getElementById('agentStatus').className = 'status-pill ended';
+        document.getElementById('agentStatus').innerText = 'Call Ended';
+        document.getElementById('agentCaption').innerText = `${reason}. Summary: Lead interested in zero-cost EMI. Followup scheduled.`;
+        document.getElementById('agentControls').innerHTML = `
+          <button class="btn-call" onclick="agentStartCall()">
+            <span>⚡</span> Call Again
+          </button>
+        `;
+        addTranscript('agent', 'System', `Call terminated (${reason}). Outcome: Positive (92% Intent).`);
+      }
+
+      if (document.getElementById('customerStatus')) {
+        document.getElementById('customerStatus').className = 'status-pill ended';
+        document.getElementById('customerStatus').innerText = 'Call Ended';
+        document.getElementById('customerCaption').innerText = 'Call disconnected. Thank you for contacting The Sleep Company.';
+        document.getElementById('customerControls').innerHTML = `
+          <button class="btn-call" disabled style="background: #14382e; color: #64748b; cursor: default;">
+            Call Completed
+          </button>
+        `;
+        addTranscript('customer', 'System', `Call finished. Duration: ${callSeconds}s.`);
+      }
+    }
+
+    function toggleMic(role) {
+      const btn = role === 'agent' ? document.getElementById('btnAgentMic') : document.getElementById('btnCustMic');
+      if (btn) {
+        btn.classList.toggle('active');
+        const isMuted = btn.classList.contains('active');
+        btn.innerText = isMuted ? '🔇' : '🎙️';
+        addTranscript(role, 'System', `Microphone ${isMuted ? 'muted' : 'unmuted'}.`);
+      }
+    }
+
+    function toggleSpeaker(role) {
+      const btn = document.getElementById('btnAgentSpeaker');
+      if (btn) {
+        btn.classList.toggle('active');
+        const isMuted = btn.classList.contains('active');
+        btn.innerText = isMuted ? '🔈' : '🔊';
+      }
+    }
+
+    function addTranscript(pane, speaker, message) {
+      const box = document.getElementById(`${pane}Transcript`);
+      if (box) {
+        const div = document.createElement('div');
+        div.className = 'transcript-entry';
+        div.innerHTML = `<strong>${speaker}:</strong> ${message}`;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+      }
+    }
+
+    // Listen to messages across tabs
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'CALL_INITIATED') {
+        if (roleParam === 'customer' || roleParam === 'split') {
+          applyCallInitiatedOnCustomer();
+        }
+      } else if (data.type === 'CALL_ACCEPTED') {
+        startActiveCall();
+      } else if (data.type === 'CALL_ENDED') {
+        applyCallEnded(data.reason || 'Call ended');
+      }
+    };
+  </script>
+</body>
+</html>

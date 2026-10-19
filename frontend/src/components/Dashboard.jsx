@@ -3,12 +3,25 @@ import React from 'react';
 // Import Recharts components for data visualization
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 // Import icons from lucide-react library
-import { PhoneCall, Users, Clock, TrendingUp, CheckCircle, Flame, ArrowUpRight, ShieldCheck, DollarSign } from 'lucide-react';
+import { PhoneCall, Users, Clock, TrendingUp, CheckCircle, Check, Flame, ArrowUpRight, ShieldCheck, DollarSign } from 'lucide-react';
 // Import mock data constants
 import { agentProfile, whoIsWaiting, initialTasks, weeklyCallData } from '../mockData';
 
 // Dashboard component displaying KPIs, tasks, earnings, waiting queue, and 7-day charts
-export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
+export default function Dashboard({
+  onOpenLeadModal,
+  onTriggerCall,
+  tasks = initialTasks,
+  onToggleTask,
+  waitingQueue = whoIsWaiting,
+  onTriggerInAppCall,
+  callsPlacedCount = 18,
+  leadsClosedToday = 6
+}) {
+  // Calculate dynamic pending and completed counts
+  const pendingTasksCount = tasks.filter(t => !t.completed).length;
+  const completedTasksCount = tasks.filter(t => t.completed).length;
+
   return (
     // Dashboard main container
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -42,12 +55,12 @@ export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
         }}>
           <div>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Shift Progress</div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#34d399' }}>6 closed / 10 target</div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#34d399' }}>{leadsClosedToday} closed / 10 target</div>
           </div>
           <div style={{ width: '1px', height: '24px', backgroundColor: '#142a24' }}></div>
           <div>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Calls Placed</div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#f1f5f9' }}>18 / 25 calls</div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#f1f5f9' }}>{callsPlacedCount} / 25 calls</div>
           </div>
         </div>
       </div>
@@ -198,7 +211,7 @@ export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
           </div>
           {/* List of waiting shoppers */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {whoIsWaiting.map((item) => (
+            {waitingQueue.map((item) => (
               <div
                 key={item.id}
                 style={{
@@ -206,14 +219,18 @@ export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '10px 12px',
-                  backgroundColor: '#0a1714',
+                  backgroundColor: item.called ? '#06130f' : '#0a1714',
                   borderRadius: '6px',
-                  border: '1px solid #142a24'
+                  border: item.called ? '1px solid #10b98140' : '1px solid #142a24'
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '12px', color: '#f8fafc' }}>{item.name}</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.product} · <span style={{ color: '#f59e0b' }}>{item.waitTime}</span></div>
+                  <div style={{ fontWeight: 600, fontSize: '12px', color: item.called ? '#94a3b8' : '#f8fafc' }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    {item.product} · <span style={{ color: item.called ? '#10b981' : '#f59e0b' }}>{item.waitTime}</span>
+                  </div>
                 </div>
                 {/* Instant Call Button passing shopper product and store context */}
                 <button
@@ -222,19 +239,21 @@ export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
                     store: 'Store floor walk-out'
                   })}
                   style={{
-                    backgroundColor: '#10b981',
-                    color: '#ffffff',
+                    backgroundColor: item.called ? '#064e3b' : '#10b981',
+                    color: item.called ? '#34d399' : '#022c22',
+                    border: item.called ? '1px solid #10b981' : 'none',
                     padding: '6px 12px',
                     borderRadius: '6px',
                     fontSize: '11px',
                     fontWeight: 600,
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px'
                   }}
                 >
-                  <PhoneCall size={12} />
-                  <span>Call</span>
+                  {item.called ? <Check size={12} /> : <PhoneCall size={12} />}
+                  <span>{item.called ? 'Connected' : 'Call'}</span>
                 </button>
               </div>
             ))}
@@ -252,64 +271,152 @@ export default function Dashboard({ onOpenLeadModal, onTriggerCall }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
             <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>My tasks today</h2>
-            <p style={{ fontSize: '11px', color: '#94a3b8' }}>2 callbacks · 2 hot leads · 1 outcome logging</p>
+            <p style={{ fontSize: '11px', color: '#94a3b8' }}>
+              {pendingTasksCount} pending tasks · {completedTasksCount} completed today
+            </p>
           </div>
-          <span style={{ fontSize: '11px', color: '#34d399', backgroundColor: '#0d2821', padding: '3px 8px', borderRadius: '4px' }}>
-            5 Pending
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            color: pendingTasksCount === 0 ? '#10b981' : '#34d399',
+            backgroundColor: pendingTasksCount === 0 ? '#064e3b' : '#0d2821',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            border: `1px solid ${pendingTasksCount === 0 ? '#10b981' : '#14382e'}`
+          }}>
+            {pendingTasksCount === 0 ? '🎉 All Tasks Complete' : `${pendingTasksCount} Pending`}
+            {completedTasksCount > 0 && ` · ${completedTasksCount} Done`}
           </span>
         </div>
 
         {/* Task Cards Stack */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {initialTasks.map((task) => (
-            <div
-              key={task.id}
-              onClick={() => {
-                // If it is a hot lead or callback, open the Leads modal
-                if (task.leadId) onOpenLeadModal(task.leadId);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                backgroundColor: '#0a1714',
-                borderRadius: '8px',
-                border: '1px solid #142a24',
-                cursor: task.leadId ? 'pointer' : 'default',
-                transition: 'border-color 0.15s ease'
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#10b981'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#142a24'; }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {/* Priority Badge */}
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: task.category === 'hot_lead' ? '#2d220b' : task.category === 'callback' ? '#3b1212' : '#14382e',
-                  color: task.category === 'hot_lead' ? '#f59e0b' : task.category === 'callback' ? '#f87171' : '#34d399',
-                  border: `1px solid ${task.category === 'hot_lead' ? '#78350f' : task.category === 'callback' ? '#7f1d1d' : '#065f46'}`
-                }}>
-                  {task.priority}
-                </span>
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9' }}>{task.title}</div>
-                  <div style={{ fontSize: '11px', color: '#64748b' }}>{task.due} · Value: {task.value}</div>
+          {tasks.map((task) => {
+            const isDone = Boolean(task.completed);
+            return (
+              <div
+                key={task.id}
+                onClick={() => {
+                  if (task.leadId) onOpenLeadModal(task.leadId);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  backgroundColor: isDone ? '#06130f' : '#0a1714',
+                  borderRadius: '8px',
+                  border: isDone ? '1px solid #10b98140' : '1px solid #142a24',
+                  cursor: task.leadId ? 'pointer' : 'default',
+                  transition: 'all 0.15s ease',
+                  opacity: isDone ? 0.85 : 1
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = isDone ? '#10b981' : '#34d399'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDone ? '#10b98140' : '#142a24'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Task Completion Checkbox */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onToggleTask) onToggleTask(task.id);
+                    }}
+                    title={isDone ? 'Mark as pending' : 'Mark as completed'}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      backgroundColor: isDone ? '#10b981' : 'transparent',
+                      border: isDone ? '2px solid #10b981' : '2px solid #334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: 0,
+                      flexShrink: 0,
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {isDone && <Check size={12} color="#022c22" strokeWidth={3} />}
+                  </button>
+
+                  {/* Priority / Status Badge */}
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: isDone ? '#064e3b' : task.category === 'hot_lead' ? '#2d220b' : task.category === 'callback' ? '#3b1212' : '#14382e',
+                    color: isDone ? '#34d399' : task.category === 'hot_lead' ? '#f59e0b' : task.category === 'callback' ? '#f87171' : '#34d399',
+                    border: `1px solid ${isDone ? '#10b981' : task.category === 'hot_lead' ? '#78350f' : task.category === 'callback' ? '#7f1d1d' : '#065f46'}`
+                  }}>
+                    {isDone ? '✅ Completed' : task.priority}
+                  </span>
+
+                  <div>
+                    <div style={{
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: isDone ? '#94a3b8' : '#f1f5f9',
+                      textDecoration: isDone ? 'line-through' : 'none'
+                    }}>
+                      {task.title}
+                    </div>
+                    <div style={{ fontSize: '11px', color: isDone ? '#10b981' : '#64748b' }}>
+                      {isDone ? (task.completedAt || 'Completed today') : task.due} · Value: {task.value}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons: Quick Call and Open Lead */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {!isDone && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const targetPhone = '+919113027924';
+                        let contactName = 'Customer';
+                        if (task.title.includes('with ')) {
+                          contactName = task.title.split('with ')[1].split(' (')[0];
+                        } else if (task.title.includes('for ')) {
+                          contactName = task.title.split('for ')[1];
+                        } else if (task.title.includes('Faizan')) {
+                          contactName = 'Faizan A.';
+                        }
+                        onTriggerCall(targetPhone, contactName, { product: task.title, store: 'Indiranagar' });
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        backgroundColor: '#0d2821',
+                        border: '1px solid #14382e',
+                        color: '#34d399',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#14382e'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0d2821'; }}
+                    >
+                      <PhoneCall size={12} />
+                      <span>Call</span>
+                    </button>
+                  )}
+
+                  {task.leadId && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: isDone ? '#64748b' : '#34d399', fontWeight: 600 }}>
+                      <span>{isDone ? 'Lead Details' : 'Open Lead'}</span>
+                      <ArrowUpRight size={14} />
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Action Prompt */}
-              {task.leadId && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
-                  <span>Open Lead</span>
-                  <ArrowUpRight size={14} />
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

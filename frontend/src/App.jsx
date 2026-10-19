@@ -14,12 +14,16 @@ import CalendarView from './components/CalendarView';
 import Pulse from './components/Pulse';
 // Import LeadsModal component
 import LeadsModal from './components/LeadsModal';
-// Import CallModal overlay
+// Import CallModal overlay for In-App voice roleplay
 import CallModal from './components/CallModal';
+// Import PhoneCallModal overlay for real PSTN mobile phone calls
+import PhoneCallModal from './components/PhoneCallModal';
 // Import DemoStrip bottom floating toolbar
 import DemoStrip from './components/DemoStrip';
 // Import phone call API service
 import { triggerPhoneCall } from './services/callingService';
+// Import initial mock data
+import { initialTasks, whoIsWaiting, mockLeads } from './mockData';
 
 // Main Application Component
 export default function App() {
@@ -36,8 +40,77 @@ export default function App() {
   // Mobile drawer open state
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
+  // Dynamic reactive state for shift tasks, waiting queue, and KPIs
+  const [tasks, setTasks] = useState(initialTasks);
+  const [waitingQueue, setWaitingQueue] = useState(whoIsWaiting);
+  const [callsPlacedCount, setCallsPlacedCount] = useState(18);
+  const [leadsClosedToday, setLeadsClosedToday] = useState(6);
+  const [leadsList, setLeadsList] = useState(mockLeads);
+
+  // Helper to mark lead and task as completed dynamically on call action
+  const markLeadAndTaskCompleted = (contactName, leadId) => {
+    setCallsPlacedCount(c => c + 1);
+    setLeadsClosedToday(c => Math.min(c + 1, 10));
+
+    // Update tasks matching contact name or leadId
+    setTasks(prev => prev.map(t => {
+      const matchName = contactName && t.title.toLowerCase().includes(contactName.toLowerCase());
+      const matchLead = leadId && t.leadId === leadId;
+      if (matchName || matchLead) {
+        return {
+          ...t,
+          completed: true,
+          completedAt: 'Called just now',
+          priority: 'Completed'
+        };
+      }
+      return t;
+    }));
+
+    // Update waiting queue if matched
+    setWaitingQueue(prev => prev.map(w => {
+      if (contactName && w.name.toLowerCase().includes(contactName.toLowerCase())) {
+        return { ...w, waitTime: 'Resolved just now', called: true };
+      }
+      return w;
+    }));
+
+    // Update leads list
+    setLeadsList(prev => prev.map(l => {
+      if ((contactName && l.name.toLowerCase().includes(contactName.toLowerCase())) || (leadId && l.id === leadId)) {
+        return { ...l, status: 'Contacted', lastContacted: 'Just now' };
+      }
+      return l;
+    }));
+  };
+
+  // Toggle task completion status directly from dashboard checkbox
+  const handleToggleTask = (taskId) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const nextDone = !t.completed;
+        if (nextDone) {
+          setLeadsClosedToday(c => Math.min(c + 1, 10));
+          setCallsPlacedCount(c => c + 1);
+        } else {
+          setLeadsClosedToday(c => Math.max(c - 1, 0));
+        }
+        return {
+          ...t,
+          completed: nextDone,
+          completedAt: nextDone ? 'Completed just now' : null,
+          priority: nextDone ? 'Completed' : (t.category === 'hot_lead' ? 'High Priority' : t.category === 'callback' ? 'Callback' : 'Pending Outcome')
+        };
+      }
+      return t;
+    }));
+  };
+
   // Trigger outbound Twilio phone call with full lead context
   const handleTriggerPhoneCall = async (phoneNumber, contactName = 'Customer', leadContext = {}) => {
+    // Immediately mark task and lead as contacted
+    markLeadAndTaskCompleted(contactName, leadContext.leadId);
+
     // Show calling modal immediately
     setActiveCall({
       mode: 'phone',
@@ -57,9 +130,10 @@ export default function App() {
     if (result.success) {
       setActiveCall((prev) => prev ? {
         ...prev,
+        callSid: result.callSid,
         status: `Ringing agent phone... ${contactName} dialogue ready on answer`
       } : null);
-      showToast(`Call initiated for ${contactName} (SID: ${result.callSid.slice(0, 8)}...)`);
+      showToast(`Call initiated for ${contactName} (SID: ${result.callSid ? result.callSid.slice(0, 8) : 'active'}...)`);
     } else {
       setActiveCall((prev) => prev ? {
         ...prev,
@@ -71,6 +145,9 @@ export default function App() {
 
   // Trigger in-app WebRTC call
   const handleTriggerInAppCall = (contactName = 'Customer') => {
+    // Immediately mark task and lead as contacted
+    markLeadAndTaskCompleted(contactName, null);
+
     // Open call modal with in-app WebRTC mode
     setActiveCall({
       mode: 'in-app',
@@ -122,6 +199,12 @@ export default function App() {
             <Dashboard
               onOpenLeadModal={(leadId) => setActiveLeadId(leadId)}
               onTriggerCall={handleTriggerPhoneCall}
+              onTriggerInAppCall={handleTriggerInAppCall}
+              tasks={tasks}
+              onToggleTask={handleToggleTask}
+              waitingQueue={waitingQueue}
+              callsPlacedCount={callsPlacedCount}
+              leadsClosedToday={leadsClosedToday}
             />
           )}
 
@@ -129,6 +212,7 @@ export default function App() {
             <Plan
               subTab={planSubTab}
               setSubTab={setPlanSubTab}
+              leads={leadsList}
               onOpenLeadModal={(leadId) => setActiveLeadId(leadId)}
               onTriggerCall={handleTriggerPhoneCall}
             />
@@ -156,9 +240,17 @@ export default function App() {
         />
       )}
 
-      {/* Live Call Control Overlay */}
-      {activeCall && (
+      {/* In-App Browser Voice Roleplay Modal */}
+      {activeCall && activeCall.mode === 'in-app' && (
         <CallModal
+          callState={activeCall}
+          onHangup={handleHangup}
+        />
+      )}
+
+      {/* Real PSTN Mobile Phone Call Widget */}
+      {activeCall && activeCall.mode === 'phone' && (
+        <PhoneCallModal
           callState={activeCall}
           onHangup={handleHangup}
         />
